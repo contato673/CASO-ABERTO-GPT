@@ -1,5 +1,16 @@
 extends Node
 
+const SURVIVORS := preload("res://scripts/survivors.gd")
+const INFECTED_SOUNDS := {
+	"moan": preload("res://assets/infectados/gemido.wav"),
+	"growl": preload("res://assets/infectados/rosnado.wav"),
+	"bite": preload("res://assets/infectados/mordida.wav"),
+}
+const CLOTHES := {
+	"jacket": preload("res://assets/equipamento/jacket.png"),
+	"shirt": preload("res://assets/equipamento/shirt.png"),
+	"coat": preload("res://assets/equipamento/coat.png"),
+}
 const SAVE := "user://campo_grande_survival_v1.json"
 const ART := "res://assets/survival_local/"
 const CAPACITY := 18
@@ -9,7 +20,8 @@ const LOOT_MAX_SECONDS := 6 * 3600
 const ITEM_NAMES := {
 	"water": "Água", "food": "Conserva", "med": "Primeiros socorros",
 	"fuel": "Galão de combustível", "parts": "Peças", "bat": "Taco", "crowbar": "Pé de cabra",
-	"knife": "Faca", "pistol": "Pistola", "ammo": "Munição"
+	"knife": "Faca", "pistol": "Pistola", "ammo": "Munição",
+	"jacket": "Jaqueta verde", "shirt": "Camiseta azul", "coat": "Casaco ocre"
 }
 const WEAPONS := {
 	"fist": {"reach": 1.8, "damage": 14.0, "duration": 0.45, "impact": 0.14, "noise": 10.0},
@@ -72,6 +84,14 @@ var restock_label: Label
 var save_timer := 0.0
 var population_timer := 0.0
 var equipped := "bat"
+var outfit := ""
+var dirty_hands := false
+var sheltered := false
+var survivor_group = SURVIVORS.new()
+var zombie_atlases: Array[Texture2D] = []
+var zombie_frame_sizes: Array[Vector2i] = []
+var voice_listener: AudioListener3D
+var voice_gap := 0.0
 var hand: Sprite3D
 var sleeve: Sprite3D
 var muzzle_flash: Sprite3D
@@ -94,14 +114,18 @@ func setup(city_game: Node) -> void:
 	safe = _entrance(sites["central"])
 	_build_hud()
 	_load_progress()
-	for i in 8:
-		icons["zombie_%d" % i] = _texture("zombie_%d" % i)
+	_prepare_infected_walk()
+	survivor_group.setup(self, game)
+	voice_listener = AudioListener3D.new()
+	game.add_child(voice_listener)
+	voice_listener.make_current()
+	_apply_outfit()
 	for item in ITEM_NAMES:
 		icons[item] = EQUIPMENT_ART[item] if EQUIPMENT_ART.has(item) else _texture(item)
 	if active_vehicle < 0:
 		game.on_foot = true
 	game.walker.visible = game.on_foot
-	if not _valid_position(game.walk_pos) or not is_finite(game.walk_pos.x):
+	if not is_finite(game.walk_pos.x) or not is_finite(game.walk_pos.y) or game._walk_blocked(game.walk_pos):
 		game.walk_pos = safe
 	game.walker.position = Vector3(game.walk_pos.x, 0.04, game.walk_pos.y)
 	hand = Sprite3D.new()
@@ -134,7 +158,11 @@ func tick(delta: float) -> void:
 	if down:
 		return
 	var where: Vector2 = game._actor_pos()
-	var in_shelter := where.distance_to(safe) < 8.0
+	var in_shelter := sheltered or where.distance_to(safe) < 8.0
+	var camera: Basis = game.cam.global_basis
+	var listener_forward := Vector3(camera.z.x, 0, camera.z.z).normalized()
+	voice_listener.transform = Transform3D(Basis.looking_at(-listener_forward), Vector3(where.x, 1.4, where.y))
+	voice_gap = maxf(0.0, voice_gap - delta)
 	var moving: bool = game.on_foot and direction.length_squared() > 0.02
 	_update_hand(delta)
 	noise_timer = maxf(0, noise_timer - delta)
@@ -163,6 +191,7 @@ func tick(delta: float) -> void:
 		population_timer = 2.8
 		_population(where)
 	_update_infected(where, delta, in_shelter)
+	survivor_group.tick(where, delta)
 	_update_near()
 	pulse += delta
 	if pulse > 0.15:
@@ -175,6 +204,7 @@ func tick(delta: float) -> void:
 		save()
 	if needs["saude"] <= 0.0:
 		down = true
+		sheltered = false
 		_reset_action()
 		hand.hide()
 		sleeve.hide()
@@ -188,7 +218,7 @@ func tick(delta: float) -> void:
 func walking_speed() -> float:
 	var stamina := clampf(float(needs["energia"]) / 30.0, 0.35, 1.0)
 	var injury := clampf(float(needs["saude"]) / 45.0, 0.55, 1.0)
-	return 5.2 * stamina * injury
+	return 6.35 * stamina * injury
 
 
 func objective_id() -> String:
@@ -238,17 +268,21 @@ func walk_location_click(screen: Vector2) -> bool:
 
 
 func interact() -> void:
-	if not game.on_foot or closest_site.is_empty() or down or action_time > 0.0:
+	if not game.on_foot or game.menu_open or closest_site.is_empty() or down or action_time > 0.0:
 		return
 	opened = closest_site
-	if str(opened["id"]) == "central":
+	if opened.get("context") == "survivor":
+		_open_panel("survivor", str(opened["name"]) + " · " + str(opened["job"]))
+		_line(opened["bio"])
+		_line(opened["advice"])
+	elif str(opened["id"]) == "central":
 		_shelter_menu()
 	else:
 		_loot_menu()
 
 
 func inventory() -> void:
-	if down or action_time > 0.0:
+	if down or sheltered or action_time > 0.0:
 		return
 	if menu_kind == "inventory":
 		close()
@@ -278,6 +312,12 @@ func _inventory_menu() -> void:
 		var caption := "%s ×%d" % [ITEM_NAMES[item], count]
 		if CONSUMABLES.has(item) or item == "fuel":
 			_button("Usar " + caption, _use.bind(item), item)
+		elif CLOTHES.has(item):
+			var verb := "Vestida · " if item == outfit else "Vestir "
+			if item == outfit:
+				_line(verb + caption)
+			else:
+				_button(verb + caption, _change_outfit.bind(item))
 		else:
 			_line(caption)
 	if _bag_count() == 0:
@@ -294,9 +334,26 @@ func _equip(item: String) -> void:
 	_inventory_menu()
 
 
+func _apply_outfit() -> void:
+	game.walker.texture = CLOTHES.get(outfit, game.PEDESTRIANS)
+
+
+func _change_outfit(item: String) -> void:
+	if not item.is_empty() and (not CLOTHES.has(item) or not bag.has(item)):
+		return
+	outfit = item
+	_apply_outfit()
+	save()
+	if sheltered:
+		_clothing_menu()
+	else:
+		_inventory_menu()
+
+
 func close() -> void:
 	if down:
 		return
+	sheltered = false
 	panel.hide()
 	game.menu_open = false
 	menu_kind = ""
@@ -326,7 +383,7 @@ func toggle_vehicle() -> void:
 		var side: Vector2 = Vector2(cos(game.car_heading), sin(game.car_heading)).orthogonal()
 		for scale in [2.1, -2.1, 2.8, -2.8]:
 			var door: Vector2 = game.car_pos + side * float(scale)
-			if _valid_position(door):
+			if not game._walk_blocked(door):
 				game.walk_pos = door
 				game.walker.position = Vector3(door.x, 0.04, door.y)
 				game.on_foot = true
@@ -705,6 +762,8 @@ func _loot_menu() -> void:
 		_line("O acesso está trancado. Quebrar o vidro faz barulho e pode atrair infectados próximos.")
 		_button("Quebrar o vidro", _break_window)
 		return
+	if opened.has("footprint"):
+		_button("Usar como esconderijo", _hideout_menu)
 	var loot: Dictionary = stash["items"]
 	if loot.is_empty():
 		restock_label = _line("")
@@ -729,10 +788,88 @@ func _break_window() -> void:
 	if bool(stash["unlocked"]):
 		return
 	stash["unlocked"] = true
+	dirty_hands = true
 	make_noise(_entrance(opened), 72.0)
 	_notify("Vidro quebrado. Escute os passos.")
 	save()
 	_loot_menu()
+
+
+func _hideout_menu() -> void:
+	if not opened.has("footprint") or not bool(_stash(opened)["unlocked"]):
+		return
+	sheltered = true
+	_open_panel("hideout", "Esconderijo · " + str(opened["name"]))
+	_line("Mãos sujas" if dirty_hands else "Mãos limpas")
+	_button("Descansar", _hideout_rest)
+	_button("Lavar as mãos", _wash_hands)
+	_button("Trocar de roupa", _clothing_menu)
+	if _window_exit().is_finite():
+		_button("Sair pela janela", _leave_window)
+	_button("Voltar à entrada", close)
+
+
+func _hideout_rest() -> void:
+	if not sheltered or float(needs["energia"]) >= 98.0:
+		return
+	needs["energia"] = minf(100.0, float(needs["energia"]) + 26.0)
+	needs["fome"] = maxf(0.0, float(needs["fome"]) - 5.0)
+	needs["sede"] = maxf(0.0, float(needs["sede"]) - 7.0)
+	_notify("Você descansou. A fome e a sede aumentaram.")
+	save()
+
+
+func _wash_hands() -> void:
+	if sheltered:
+		dirty_hands = false
+		_notify("Mãos lavadas.")
+		save()
+		_hideout_menu()
+
+
+func _clothing_menu() -> void:
+	_open_panel("clothing", "Roupas")
+	_line("Vestindo: %s" % ("Roupa inicial" if outfit.is_empty() else ITEM_NAMES[outfit]))
+	for item in CLOTHES:
+		if bag.has(item) and item != outfit:
+			_button("Vestir " + str(ITEM_NAMES[item]), _change_outfit.bind(item))
+	if not outfit.is_empty():
+		_button("Vestir roupa inicial", _change_outfit.bind(""))
+	elif not CLOTHES.keys().any(func(item): return bag.has(item)):
+		_line("Procure outras roupas nas casas.")
+	_button("Voltar ao esconderijo", _hideout_menu)
+
+
+func _window_exit() -> Vector2:
+	var footprint: PackedVector2Array = opened["footprint"]
+	var entry := _entrance(opened)
+	var best := entry
+	var distance := 3.6
+	for i in footprint.size():
+		var a := footprint[i]
+		var b := footprint[(i + 1) % footprint.size()]
+		var perpendicular := a.direction_to(b).orthogonal()
+		for side in [-1.0, 1.0]:
+			var candidate := (a + b) * 0.5 + perpendicular * float(side) * 1.35
+			var clear_of_entry := entry.distance_to(candidate)
+			if clear_of_entry > distance and not game._walk_blocked(candidate):
+				best = candidate
+				distance = clear_of_entry
+	return best if best != entry else Vector2.INF
+
+
+func _leave_window() -> void:
+	if not sheltered:
+		return
+	var destination := _window_exit()
+	if not destination.is_finite():
+		return
+	close()
+	game.walk_pos = destination
+	game.walker.position = Vector3(destination.x, 0.04, destination.y)
+	make_noise(destination, 12.0)
+	_update_near()
+	save()
 
 
 func _take(id: String, item: String) -> void:
@@ -770,6 +907,7 @@ func _stash(p: Dictionary) -> Dictionary:
 		"pharmacy":["med","med","water","parts"],
 		"supermarket":["food","water","food","water","parts"],
 		"mall":["parts","crowbar","water","food","bat","fuel"],
+		"residence":["water","food","food","parts","med","jacket","shirt","coat"],
 		"other":["food","water","parts","fuel","bat","crowbar"]
 	}[type]
 	var stock := {}
@@ -783,7 +921,8 @@ func _stash(p: Dictionary) -> Dictionary:
 		if id == task["place"] and (quest < QUESTS.size() and id == QUESTS[quest]["place"]):
 			stock[task["item"]] = maxi(1, int(stock.get(task["item"], 0)))
 	var delay := random.randi_range(LOOT_MIN_SECONDS, LOOT_MAX_SECONDS)
-	var lock := id == "pague_menos_13" or id == "patio_central" or random.randf() < (0.55 if type != "other" else 0.36)
+	var lock_rate := 0.42 if type == "residence" else (0.55 if type != "other" else 0.36)
+	var lock := id == "pague_menos_13" or id == "patio_central" or random.randf() < lock_rate
 	var first_equipment := cycle == 1 or bool(containers.get(id, {}).get("arms_pending", false))
 	if first_equipment or (id == "mercado" and random.randf() < 0.30) or (id == "patio_central" and random.randf() < 0.16):
 		_stock_new_equipment(id, stock)
@@ -805,6 +944,8 @@ func _stock_new_equipment(id: String, stock: Dictionary) -> void:
 func _kind(p: Dictionary) -> String:
 	var category := str(p.get("category", ""))
 	var name := str(p["name"]).to_lower()
+	if category == "residence":
+		return category
 	if category == "pharmacy" or "farmácia" in name or "drogaria" in name:
 		return "pharmacy"
 	if category in ["supermarket", "market"] or "mercado" in name or "feira" in name:
@@ -879,6 +1020,9 @@ func _transfer_item(item: String, deposit: bool, requested: int) -> void:
 		source.erase(item)
 		if deposit and equipped == item:
 			equipped = "fist"
+		if deposit and outfit == item:
+			outfit = ""
+			_apply_outfit()
 	else:
 		source[item] = count - moved
 	target[item] = int(target.get(item, 0)) + moved
@@ -960,6 +1104,8 @@ func _item_count(contents: Dictionary) -> int:
 
 
 func _entrance(p: Dictionary) -> Vector2:
+	if p.get("context") == "survivor":
+		return p["pos"]
 	return p.get("npc_pos", Vector2(float(p["x"]), float(p["y"])))
 
 
@@ -974,18 +1120,31 @@ func _update_near() -> void:
 		if d < best:
 			closest_site = p
 			best = d
+	var person: Dictionary = survivor_group.near(here, minf(4.5, best))
+	if not person.is_empty():
+		closest_site = person
 	if not closest_site.is_empty():
 		return
 	best = 5.0
-	for b in game._bpolys_at(here):
-		var polygon: PackedVector2Array = b["pts"]
-		for i in polygon.size():
-			var p := Geometry2D.get_closest_point_to_segment(here, polygon[i], polygon[(i + 1) % polygon.size()])
-			var d := here.distance_to(p)
-			if d < best:
-				var center: Vector2 = b["bb"].get_center()
-				closest_site = {"id":"b_%d_%d" % [roundi(center.x),roundi(center.y)], "name":"Edificação abandonada", "x":p.x, "y":p.y}
-				best = d
+	var cell := Vector2i(floori(here.x / 50.0), floori(here.y / 50.0))
+	for x in range(-1, 2):
+		for y in range(-1, 2):
+			for building in game.bpoly_bk.get(cell + Vector2i(x, y), []):
+				var bounds: Rect2 = building["bb"]
+				if not bounds.grow(best).has_point(here):
+					continue
+				var polygon: PackedVector2Array = building["pts"]
+				for i in polygon.size():
+					var edge := Geometry2D.get_closest_point_to_segment(here, polygon[i], polygon[(i + 1) % polygon.size()])
+					var d := here.distance_to(edge)
+					if d < best:
+						var center := bounds.get_center()
+						var residence: bool = building["use"] == "residence"
+						closest_site = {"id":"b_%d_%d" % [roundi(center.x),roundi(center.y)],
+							"name":"Casa abandonada" if residence else "Edificação abandonada",
+							"category":"residence" if residence else "", "x":edge.x, "y":edge.y,
+							"footprint":polygon, "context":"building"}
+						best = d
 
 
 func _nearest_vehicle() -> int:
@@ -995,7 +1154,7 @@ func _nearest_vehicle() -> int:
 	if active_vehicle >= 0 and here.distance_to(game.car_pos) < best:
 		found = active_vehicle
 		best = here.distance_to(game.car_pos)
-	for i in game.parked_vehicles.size():
+	for i in game._nearby_cars(here, 4.6):
 		if i == active_vehicle:
 			continue
 		var d := here.distance_to(game.parked_vehicles[i]["pos"])
@@ -1010,6 +1169,7 @@ func _vehicle_record(v: Dictionary) -> Dictionary:
 
 
 func _set_parked_pose(info: Dictionary) -> void:
+	game._index_car(info)
 	var node: Node3D = info["node"]
 	var basis: Basis = info["basis"]
 	var yaw: float = info["heading"] - info["original_heading"]
@@ -1041,6 +1201,55 @@ func _refresh_vehicle() -> void:
 	game.car_root.show()
 
 
+func _prepare_infected_walk() -> void:
+	for index in 8:
+		var skin := _texture("zombie_%d" % index)
+		if skin == null:
+			continue
+		var source := skin.get_image()
+		var w := source.get_width()
+		var h := source.get_height()
+		var frame := Vector2i(w + 4, h + 3)
+		var atlas := Image.create_empty(frame.x * 4, frame.y, false, Image.FORMAT_RGBA8)
+		var hip := floori(h * 0.72)
+		var middle := w / 2
+		for step in 4:
+			var origin := Vector2i(step * frame.x + 2, 2)
+			var stride: int = [0, -1, 0, 1][step]
+			var shift: int = [0, -1, 1, 0][step]
+			atlas.blend_rect(source, Rect2i(0, 0, w, hip), origin + Vector2i(shift, -absi(stride)))
+			atlas.blend_rect(source, Rect2i(0, hip, middle, h - hip), origin + Vector2i(stride, hip - maxi(0, stride) * 2))
+			atlas.blend_rect(source, Rect2i(middle, hip, w - middle, h - hip), origin + Vector2i(middle - stride, hip + mini(0, stride) * 2))
+		zombie_atlases.append(ImageTexture.create_from_image(atlas))
+		zombie_frame_sizes.append(frame)
+
+
+func _infected_voice(z: Dictionary, cue: String, distance: float) -> void:
+	if distance > 34.0 or (voice_gap > 0.0 and cue != "bite"):
+		return
+	var voice: AudioStreamPlayer3D = z["voice"]
+	voice.stream = INFECTED_SOUNDS[cue]
+	voice.pitch_scale = float(z["pitch"])
+	voice.play()
+	voice_gap = 0.62
+
+
+func _infected_pose(z: Dictionary, at: Vector2, step: Vector2, delta: float, biting: bool) -> void:
+	var sprite: Sprite3D = z["node"]
+	var moving := not step.is_zero_approx()
+	if moving:
+		z["walk"] += delta * (11.0 if z["state"] == "chase" else 5.6)
+		sprite.flip_h = Vector3(step.x, 0, step.y).dot(game.cam.global_basis.x) < 0.0
+	var frame := int(z["walk"]) % 4 if moving else (2 if biting else 0)
+	var frame_size: Vector2i = z["frame_size"]
+	if frame_size != Vector2i.ZERO:
+		sprite.region_rect = Rect2(frame * frame_size.x, 0, frame_size.x, frame_size.y)
+	else:
+		sprite.region_rect.position.x = frame * 32
+	var bob := (0.02 + absf(sin(float(z["walk"]) * PI * 0.5)) * 0.09) if moving else 0.0
+	sprite.position = Vector3(at.x, 0.04 + bob, at.y)
+
+
 func _population(here: Vector2) -> void:
 	for i in range(infected.size() - 1, -1, -1):
 		var z: Dictionary = infected[i]
@@ -1060,19 +1269,27 @@ func _population(here: Vector2) -> void:
 		if distance < 25.0 or distance > 82.0 or start.distance_to(safe) < 13.0 or not _valid_position(start):
 			continue
 		var sprite: Sprite3D = game._person_sprite(tries % 6)
-		var skin: Texture2D = icons.get("zombie_%d" % (randi() % 8))
-		if skin != null:
-			sprite.region_enabled = false
-			sprite.texture = skin
-			sprite.pixel_size = 2.40 / float(skin.get_height())
-			sprite.offset.y = float(skin.get_height()) * 0.5 - 1.0
+		var frame_size := Vector2i.ZERO
+		if not zombie_atlases.is_empty():
+			var variant := randi() % zombie_atlases.size()
+			frame_size = zombie_frame_sizes[variant]
+			sprite.texture = zombie_atlases[variant]
+			sprite.region_rect = Rect2(0, 0, frame_size.x, frame_size.y)
+			sprite.pixel_size = 2.55 / float(frame_size.y)
+			sprite.offset.y = float(frame_size.y) * 0.5 - 1.0
 		else:
 			sprite.modulate = Color("#a3c292")
+		var voice := AudioStreamPlayer3D.new()
+		voice.max_distance = 38.0
+		voice.unit_size = 7.0
+		voice.volume_db = -14.0
+		sprite.add_child(voice)
 		sprite.position = Vector3(start.x, 0.04, start.y)
 		var tangent: Vector2 = lane[1]
 		infected.append({"node":sprite, "pos":start, "home":start, "patrol":start+tangent*8.0,
 			"target":start, "state":"patrol", "timer":0.0, "hp":65.0, "seen":0.0, "bite":0.0,
-			"retry":0.0, "path":PackedVector2Array(), "walk":randf() * TAU, "speed":randf_range(1.85, 2.7)})
+			"retry":0.0, "path":PackedVector2Array(), "walk":randf() * TAU, "speed":randf_range(1.85, 2.7),
+			"frame_size":frame_size, "voice":voice, "pitch":randf_range(0.83, 1.16), "voice_in":randf_range(1.0, 5.0)})
 		break
 
 
@@ -1086,6 +1303,10 @@ func _update_infected(here: Vector2, delta: float, protected: bool) -> void:
 		z["bite"] = maxf(0.0, float(z["bite"]) - delta)
 		z["retry"] = maxf(0.0, float(z["retry"]) - delta)
 		var distance := at.distance_to(here)
+		z["voice_in"] = maxf(0.0, float(z["voice_in"]) - delta)
+		if z["voice_in"] <= 0.0 and distance < 24.0:
+			_infected_voice(z, "growl" if z["state"] == "chase" else "moan", distance)
+			z["voice_in"] = randf_range(3.5, 8.0)
 		var arrived := at.distance_to(z["target"]) < 1.2
 		var detection := 17.0 if game.day_f > 0.35 else 11.0
 		if not protected and distance < detection and _clear_line(at, here):
@@ -1112,8 +1333,11 @@ func _update_infected(here: Vector2, delta: float, protected: bool) -> void:
 			if z["bite"] <= 0.0:
 				var hit := 9.5 if game.on_foot else 3.0
 				needs["saude"] = maxf(0.0, float(needs["saude"]) - hit)
+				dirty_hands = true
+				_infected_voice(z, "bite", distance)
 				z["bite"] = 1.15
 				_notify("Infectado atingiu você.")
+			_infected_pose(z, at, Vector2.ZERO, delta, float(z["bite"]) > 0.85)
 			continue
 		var target: Vector2 = z["target"]
 		var path: PackedVector2Array = z["path"]
@@ -1136,10 +1360,7 @@ func _update_infected(here: Vector2, delta: float, protected: bool) -> void:
 				z["path"] = game.road_route.route(at, z["target"])
 				z["retry"] = 2.2
 		z["pos"] = next
-		z["walk"] += delta * (10.0 if z["state"] == "chase" else 6.0)
-		var bob := absf(sin(z["walk"])) * 0.09
-		sprite.position = Vector3(next.x, 0.05 + bob, next.y)
-		sprite.flip_h = Vector3(forward.x, 0, forward.y).dot(game.cam.global_basis.x) < 0.0
+		_infected_pose(z, next, next - at, delta, false)
 
 
 func _damage_zombie(z: Dictionary, amount: float) -> void:
@@ -1173,6 +1394,9 @@ func _valid_position(at: Vector2) -> bool:
 func _revive() -> void:
 	_reset_action()
 	equipped = "bat"
+	outfit = ""
+	dirty_hands = false
+	_apply_outfit()
 	bag = {"food":1,"water":1,"bat":1}
 	needs = {"saude":100.0,"fome":68.0,"sede":68.0,"energia":72.0}
 	for z in infected:
@@ -1215,7 +1439,7 @@ func save() -> void:
 	var player: Vector2 = game._actor_pos()
 	var f := FileAccess.open(SAVE, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"on_foot":game.on_foot,"areas":containers,"bag":bag,"equipped":equipped,"chest":chest,"needs":needs,"taken":taken,"vehicle":active_vehicle,
+		f.store_string(JSON.stringify({"on_foot":game.on_foot,"areas":containers,"bag":bag,"equipped":equipped,"outfit":outfit,"dirty_hands":dirty_hands,"chest":chest,"needs":needs,"taken":taken,"vehicle":active_vehicle,
 			"fuel":fuel,"quest":quest,"found":supply_found,"reputation":reputation,"next":next_contract,"x":player.x,"y":player.y,
 			"cx":game.car_pos.x,"cy":game.car_pos.y,"heading":game.car_heading}))
 
@@ -1242,6 +1466,11 @@ func _load_progress() -> void:
 	equipped = str(data.get("equipped", previous))
 	if not WEAPONS.has(equipped) or (equipped != "fist" and not bag.has(equipped)):
 		equipped = "fist"
+	outfit = str(data.get("outfit", ""))
+	if not CLOTHES.has(outfit) or not bag.has(outfit):
+		outfit = ""
+	dirty_hands = bool(data.get("dirty_hands", false))
+	_apply_outfit()
 	chest = data.get("chest", {})
 	needs.merge(data.get("needs", {}), true)
 	taken = data.get("taken", {})

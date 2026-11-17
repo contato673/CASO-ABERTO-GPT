@@ -19,6 +19,10 @@ Saúde, fome, sede e energia afetam recuperação e movimento. A mochila tem 18 
 
 Na mochila, escolha **Equipar** ou **Guardar arma · Usar punhos**. A faca aparece no Mercadão, e a pistola e a munição podem ser encontradas no Pátio Central Shopping. Cada disparo gasta uma munição e pode atrair infectados de longe.
 
+Para vasculhar uma casa, aproxime-se da fachada e use o botão de interação. Se estiver trancada, quebrar o vidro chama a atenção dos infectados. Dentro do menu de esconderijo você pode descansar, lavar as mãos, trocar de roupa e sair por uma janela quando houver espaço livre. As roupas vêm do saque e aparecem no personagem, inclusive depois de recarregar o jogo.
+
+Os quadradinhos verdes no minimapa indicam carros próximos. Há oito sobreviventes com nome, profissão e história. Eles circulam perto dos seus pontos de referência e se afastam quando detectam infectados. Os infectados têm animações de caminhada e sons que vêm da posição deles na rua.
+
 No Posto Barão, abra **Baú pessoal** a pé para guardar ou retirar até 60 itens. O conteúdo do baú é salvo no dispositivo e permanece após a derrota do personagem.
 
 Há três entregas para o abrigo. Depois da sequência, novos contratos ficam disponíveis após 20 minutos. Mochila, necessidades, estoque, carros e reputação são salvos no dispositivo. A rede do abrigo é uma progressão local para um jogador.

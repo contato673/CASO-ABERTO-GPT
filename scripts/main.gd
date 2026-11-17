@@ -89,9 +89,11 @@ var car_pos := Vector2.ZERO
 var on_foot := false
 var survival = preload("res://scripts/survival.gd").new()
 var parked_vehicles: Array[Dictionary] = []
+var parked_cells: Dictionary = {}
 var btn_attack: Button
 var walk_pos := Vector2.ZERO
 var walker: Sprite3D
+var walker_outline: Sprite3D
 var walk_cycle := 0.0
 var walk_face := 1
 var btn_car: Button
@@ -99,7 +101,6 @@ var static_people: Array[Sprite3D] = []
 var street_hour := 12.0
 var car_heading := 0.0
 var car_speed := 0.0
-var blocked_t := 0.0
 var cam: Camera3D
 
 var money := 500
@@ -319,7 +320,16 @@ func _ready() -> void:
 	fps_on = OS.get_cmdline_user_args().has("--fpslog")
 	_setup_survival_places()
 	_fill_abandoned_car_gaps()
+	_distribute_abandoned_cars()
 	walker = _person_sprite(4)
+	walker_outline = walker.duplicate()
+	walker_outline.no_depth_test = true
+	walker_outline.shaded = false
+	walker_outline.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
+	walker_outline.modulate = Color(1.0, 0.91, 0.76, 0.75)
+	walker_outline.render_priority = 8
+	walker_outline.hide()
+	walker.add_child(walker_outline)
 	walker.hide()
 	_build_fixed_people()
 	add_child(survival)
@@ -358,8 +368,15 @@ func _process(delta: float) -> void:
 		street_label.text = street if not street.is_empty() else "Fora da via"
 	street_label.show()
 	_update_signs()
-	player_marker.visible = not on_foot
-	player_marker.position = cam.unproject_position(car_root.position + Vector3.UP * 0.85)
+	var actor_height := Vector3.UP * (1.3 if on_foot else 0.85)
+	var covered := on_foot and _foot_occluded(walker.position + actor_height)
+	walker_outline.visible = covered
+	if covered:
+		walker_outline.texture = walker.texture
+		walker_outline.region_rect = walker.region_rect
+		walker_outline.offset = walker.offset
+	player_marker.visible = not on_foot or covered
+	player_marker.position = cam.unproject_position((walker.position if on_foot else car_root.position) + actor_height)
 	player_marker.queue_redraw()
 	mm_t += delta
 	if mm_t >= 0.12:
@@ -367,8 +384,8 @@ func _process(delta: float) -> void:
 		minimap.queue_redraw()
 		nav_arrow.queue_redraw()
 	case_label.text = survival.objective_text()
-	if not ph and not menu_open and survival.available():
-		prompt_label.text = "[E] " + str(survival.closest_site["name"])
+	if not menu_open and survival.available() and (not ph or survival.closest_site.has("context")):
+		prompt_label.text = ("" if ph else "[E] ") + str(survival.closest_site["name"])
 		prompt_label.position.y = case_label.position.y + case_label.size.y + 6
 		prompt_label.show()
 	else:
@@ -563,7 +580,7 @@ func _build_world() -> void:
 		for plot in road_clearance.clip(pts):
 			if _bbox(plot).get_area() < 7.0 or Geometry2D.triangulate_polygon(plot).is_empty() or not road_clearance.is_clear(plot):
 				continue
-			_add_bpoly(plot, h)
+			_add_bpoly(plot, h, "residence" if h < 9.0 and not b.has("site") else "", str(b.get("site", "")))
 			_bk_add(bld_bk, _bbox(plot).get_center())
 			_city_building(bst, plot, h, i, str(b.get("site", "")))
 		if i % 125 == 124:
@@ -1020,9 +1037,9 @@ func _bk_near(d: Dictionary, q: Vector2, r: float) -> bool:
 	return false
 
 
-func _add_bpoly(pts: PackedVector2Array, h: float) -> void:
+func _add_bpoly(pts: PackedVector2Array, h: float, use := "", site := "") -> void:
 	var bb := _bbox(pts)
-	var entry := {"pts": pts, "bb": bb, "h": h}
+	var entry := {"pts": pts, "bb": bb, "h": h, "use": use, "site": site}
 	building_polys.append(entry)
 	if h > 22.0:
 		tall_buildings.append(entry)
@@ -1286,16 +1303,29 @@ func _walk(delta: float) -> void:
 	var dir := Vector2(right.x, right.z) * screen.x + Vector2(forward.x, forward.z).normalized() * screen.y
 	survival.direction = screen
 	var move: Vector2 = dir * delta * survival.walking_speed()
-	for part in [Vector2(move.x, 0.0), Vector2(0.0, move.y)]:
-		var next: Vector2 = walk_pos + part
-		if not _blocked(next) and not _in_water(next):
-			walk_pos = next
+	_walk_move(move)
 	walker.position = Vector3(walk_pos.x, 0.04, walk_pos.y)
 	if absf(screen.x) > 0.08:
 		walk_face = 0 if screen.x < 0.0 else 1
 	walk_cycle += delta * 7.0
 	var frame := int(walk_cycle) % 4 if screen.length_squared() > 0.03 else 0
 	walker.region_rect = Rect2(frame * 32, (8 + walk_face) * 40, 32, 40)
+
+
+func _walk_move(motion: Vector2) -> void:
+	if _walk_blocked(walk_pos):
+		walk_pos = survival.safe
+	var pieces := maxi(1, ceili(motion.length() / 0.45))
+	var step := motion / float(pieces)
+	for i in pieces:
+		for part in [Vector2(step.x, 0.0), Vector2(0.0, step.y)]:
+			var next: Vector2 = walk_pos + part
+			if not _walk_blocked(next):
+				walk_pos = next
+
+
+func _walk_blocked(at: Vector2) -> bool:
+	return not _in_area(at) or _in_water(at) or _blocked(at) or not _buildings_clear(_rectangle(at, Vector2.DOWN, 0.82, 0.82))
 
 
 func _drive(delta: float) -> void:
@@ -1332,56 +1362,42 @@ func _drive(delta: float) -> void:
 		rate = 10.0
 	car_speed = move_toward(car_speed, target, rate * delta)
 
+	var heading := car_heading
 	if in_place or absf(car_speed) > 0.5:
 		var sg := signf(car_speed) if absf(car_speed) > 0.3 else 1.0
 		car_heading += steer * TURN_RATE * turn_k * delta * sg
-
-	var dir := Vector2(cos(car_heading), sin(car_heading))
-	var step := dir * car_speed * delta
-	var next := car_pos + step
-	if _car_blocked(next):
 		if _car_blocked(car_pos):
-			# já está preso dentro de algo: deixa andar para sair
-			car_pos = next
-			blocked_t += delta
-		else:
-			var slid := false
-			for cand in [car_pos + Vector2(step.x, 0.0), car_pos + Vector2(0.0, step.y)]:
-				if not _car_blocked(cand):
-					car_pos = cand
-					slid = true
-					break
-			# batida: quica um pouco para trás e fica livre para manobrar
-			car_speed = car_speed * (0.5 if slid else -0.3)
-			if not slid:
-				var back := car_pos - dir * 0.5
-				if not _car_blocked(back):
-					car_pos = back
-			blocked_t += delta
-	else:
-		car_pos = next
-		blocked_t = maxf(0.0, blocked_t - delta * 2.0)
-	if blocked_t > 1.6:
-		_unstick()
-		blocked_t = 0.0
+			car_heading = heading
+
+	_drive_move(Vector2(cos(car_heading), sin(car_heading)) * car_speed * delta)
+
 
 	car_root.position = Vector3(car_pos.x, 0.0, car_pos.y)
 	car_root.rotation.y = atan2(cos(car_heading), sin(car_heading))
 
 
+func _drive_move(motion: Vector2) -> void:
+	if _car_blocked(car_pos):
+		_unstick()
+		return
+	var pieces := maxi(1, ceili(motion.length() / 0.7))
+	var step := motion / float(pieces)
+	for i in pieces:
+		var next := car_pos + step
+		if _car_blocked(next):
+			car_speed *= -0.23
+			return
+		car_pos = next
+
+
 func _car_blocked(p: Vector2) -> bool:
-	if _blocked(p):
+	if not _in_area(p) or _in_water(p) or _blocked(p):
 		return true
-	for i in parked_vehicles.size():
+	for i in _nearby_cars(p, 2.6):
 		if i != survival.active_vehicle and p.distance_squared_to(parked_vehicles[i]["pos"]) < 6.75:
 			return true
 	var fwd := Vector2(cos(car_heading), sin(car_heading))
-	var side := fwd.orthogonal() * 0.70
-	for sign_z in [-1.0, 1.0]:
-		var end: Vector2 = p + fwd * float(sign_z) * 1.85
-		if _inside_any_building(end + side) or _inside_any_building(end - side):
-			return true
-	return false
+	return not _buildings_clear(_rectangle(p, fwd, 1.7, CAR_LENGTH))
 
 
 func _unstick() -> void:
@@ -2282,6 +2298,19 @@ func _on_option(opt: String) -> void:
 
 # ---------- interface ----------
 
+func _foot_occluded(at: Vector3) -> bool:
+	var sight := cam.global_basis.z
+	var limit := minf(64.0, (cam.global_position - at).dot(sight))
+	if limit <= 1.0:
+		return false
+	for n in range(1, ceili(limit), 2):
+		var sample := at + sight * float(n)
+		for building in _bpolys_at(Vector2(sample.x, sample.z)):
+			if float(building["h"]) >= sample.y and Geometry2D.is_point_in_polygon(Vector2(sample.x, sample.z), building["pts"]):
+				return true
+	return false
+
+
 func _draw_player_marker() -> void:
 	var span := 25.0
 	var cap := 8.0
@@ -2486,7 +2515,7 @@ func _fill_lots() -> void:
 						if not _parcel_clear(pts, center):
 							continue
 						var h := rng.randf_range(3.5, 6.7)
-						_add_bpoly(pts, h)
+						_add_bpoly(pts, h, "residence" if not (row == 0 and added % 39 == 26) else "")
 						_bk_add(bld_bk, center)
 						if row == 0 and added % 13 == 0:
 							var models := ["casa_terracota", "casa_azulada", "comercio_toldo"]
@@ -2915,7 +2944,33 @@ func _place_street_object(path: String, q: Vector2, dir: Vector2, scale_factor: 
 		var facing := atan2(heading.y, heading.x)
 		parked_vehicles.append({"node":inst,"pos":q,"path":path,"basis":bas,"offset":Vector3(ctr.x,ab.position.y,ctr.z),
 			"heading":facing,"original_heading":facing,"index":parked_vehicles.size()})
+		_index_car(parked_vehicles[-1])
 	return true
+
+
+func _index_car(car: Dictionary) -> void:
+	var at: Vector2 = car["pos"]
+	var cell := Vector2i(floori(at.x / 50.0), floori(at.y / 50.0))
+	var index: int = car["index"]
+	if car.has("cell"):
+		var old: Vector2i = car["cell"]
+		if old == cell:
+			return
+		parked_cells[old].erase(index)
+	if not parked_cells.has(cell):
+		parked_cells[cell] = []
+	parked_cells[cell].append(index)
+	car["cell"] = cell
+
+
+func _nearby_cars(at: Vector2, radius: float) -> Array:
+	var low := (at - Vector2.ONE * radius) / 50.0
+	var high := (at + Vector2.ONE * radius) / 50.0
+	var found := []
+	for x in range(floori(low.x), floori(high.x) + 1):
+		for y in range(floori(low.y), floori(high.y) + 1):
+			found.append_array(parked_cells.get(Vector2i(x, y), []))
+	return found
 
 
 func _fill_abandoned_car_gaps() -> void:
@@ -2957,6 +3012,57 @@ func _fill_abandoned_car_gaps() -> void:
 					break
 			if placed:
 				break
+
+
+func _distribute_abandoned_cars() -> void:
+	# Append to the old list so vehicle IDs in existing saves still point to the same cars.
+	var districts := {}
+	for road_cell in rd_bk:
+		var cell := Vector2i(floori(float(road_cell.x) / 3), floori(float(road_cell.y) / 3))
+		if not districts.has(cell):
+			districts[cell] = []
+		for lane in rd_bk[road_cell]:
+			if str(lane[3]) in ["residential", "tertiary", "secondary", "living_street"]:
+				districts[cell].append(lane)
+	var occupied := {}
+	for v in parked_vehicles:
+		_bk_add(occupied, v["pos"])
+	var furnishings := {}
+	for shape in placed_street_objects:
+		_bk_add(furnishings, _bbox(shape).get_center())
+	var models := [PLAYER_CAR, VEHICLE_DIR + "/Car_Blue.glb"]
+	var cells := districts.keys()
+	cells.sort()
+	var added := 0
+	for cell in cells:
+		var options: Array = districts[cell]
+		if options.is_empty():
+			continue
+		var center := Vector2(cell) * 150.0 + Vector2(75, 75)
+		options.sort_custom(func(a, b): return center.distance_squared_to(a[0]) < center.distance_squared_to(b[0]))
+		var path: String = models[added % models.size()]
+		var bounds := _proto_aabb(path)
+		var longest := maxf(bounds.size.x, bounds.size.z)
+		if longest <= 0.01:
+			continue
+		var placed := 0
+		for lane in options:
+			var lane_point: Vector2 = lane[0]
+			if _bk_near(occupied, lane_point, 25.0):
+				continue
+			var heading: Vector2 = lane[1]
+			for side in [-1.0, 1.0]:
+				var parked_at := lane_point + heading.orthogonal() * (float(lane[2]) + 4.2) * float(side)
+				if not _in_area(parked_at) or _blocked(parked_at) or _bk_near(occupied, parked_at, 26.0) or _bk_near(furnishings, parked_at, 4.5):
+					continue
+				if _place_street_object(path, parked_at, heading, CAR_LENGTH / longest, true):
+					_bk_add(occupied, parked_at)
+					placed += 1
+					added += 1
+					break
+			if placed >= 2:
+				break
+	print("carros adicionais por bairro: ", added)
 
 
 func _scatter_props() -> void:
@@ -3101,6 +3207,16 @@ func _build_fixed_people() -> void:
 		if p.get("real_place", false):
 			perch = _site_entrance(p, access, perch)
 		p["npc_pos"] = perch
+		if p.get("real_place", false):
+			var closest := INF
+			for building in building_polys:
+				if str(building["site"]) != str(p["id"]):
+					continue
+				var box: Rect2 = building["bb"]
+				var distance := box.get_center().distance_squared_to(perch)
+				if distance < closest:
+					p["footprint"] = building["pts"]
+					closest = distance
 		if str(p["id"]) == "central":
 			var npc := _person_sprite(2)
 			npc.position = Vector3(perch.x, 0.04, perch.y)
@@ -3381,6 +3497,14 @@ func _draw_minimap() -> void:
 			minimap.draw_circle(q, 3.5, Color(0.45, 0.75, 1.0))
 	var h := Vector2(cos(car_heading), sin(car_heading))
 	if on_foot:
+		for index in _nearby_cars(walk_pos, 90.0):
+			var v: Dictionary = parked_vehicles[index]
+			if v["index"] == survival.active_vehicle or walk_pos.distance_squared_to(v["pos"]) > 90.0 * 90.0:
+				continue
+			var point := _mm_pos(v["pos"])
+			if Rect2(Vector2(4, 4), sz - Vector2(8, 8)).has_point(point):
+				minimap.draw_rect(Rect2(point - Vector2(3.5, 2.5), Vector2(7, 5)), Color("#7cdfb5"))
+	if on_foot and survival.active_vehicle >= 0:
 		minimap.draw_circle(_mm_pos(car_pos), 4.0, Color("#ffd284"))
 	var sx := (-h.x + h.y) * 0.70710678
 	var sy := -(h.x + h.y) * 0.70710678
@@ -4105,7 +4229,7 @@ func _place_landmark(st: SurfaceTool, desired: Vector2, yaw: float, id: String) 
 					var off: Vector3 = part["offset"]
 					var world := base + tangent * off.x + facing * off.z
 					_box_c(st, Vector3(world.x, off.y, world.y), part["size"], part["color"], yaw)
-				_add_bpoly(shape, tallest)
+				_add_bpoly(shape, tallest, "", id)
 				_bk_add(bld_bk, base)
 				for poi in pois:
 					if str(poi["id"]) == id:

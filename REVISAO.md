@@ -20,3 +20,5 @@ Fluxo testado no Godot em tela vertical. Foram exercitados roubo e reentrada no 
 - Dois modelos de **Voxel Buildings** adaptados para lotes genéricos. [mehrasaur](https://mehrasaur.itch.io/voxel-buildings)
 - Referências de combate isométrico e lógica de estados dos infectados. A implementação do jogo é em GDScript. [Zombusters](https://github.com/retrowax/Zombusters) · [zombie-ai](https://github.com/baponkar/zombie-ai)
 - Pacotes **Package**, **Pleasant Park Pack** e **actionVoxels** ficam disponíveis como material de origem local. Os arquivos recebidos não trouxeram condições de uso identificáveis.
+
+A revisão em tela vertical também cobriu colisão a pé e de carro, busca em uma casa, vidro quebrado, descanso, higiene, saída pela janela, persistência da roupa, fuga de um sobrevivente e quadros e reprodução sonora dos infectados. A distribuição adicionou 812 carros mantendo os IDs existentes.
