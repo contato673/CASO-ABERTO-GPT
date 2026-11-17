@@ -28,6 +28,7 @@ const ROAD_ROUTE := preload("res://scripts/road_route.gd")
 const ROAD_CLEARANCE := preload("res://scripts/road_clearance.gd")
 const STREET_VIEW := 36.0
 const PIXEL_WORLD := preload("res://scripts/pixel_world.gdshader")
+const PERSON_OCCLUSION := preload("res://scripts/person_occlusion.gdshader")
 const CAR_OCCLUSION := preload("res://scripts/car_occlusion.gdshader")
 const TINTS := [Color(0.95, 0.9, 0.8), Color(0.82, 0.88, 0.92), Color(0.92, 0.75, 0.65), Color(0.78, 0.85, 0.74), Color(0.96, 0.94, 0.86), Color(0.85, 0.78, 0.7)]
 const SHOP_NAMES := ["Mercado Central", "Padaria do Zé", "Farmácia Santa Clara", "Loja de Ferragens", "Lanchonete Sabor do Sul", "Oficina do Tião", "Papelaria Estrela", "Açougue Boi Bravo"]
@@ -344,8 +345,9 @@ func _ready() -> void:
 	_build_ruined_streets()
 	walker = _person_sprite(4)
 	walker_outline = walker.duplicate()
-	walker_outline.no_depth_test = true
-	walker_outline.shaded = false
+	var silhouette := ShaderMaterial.new()
+	silhouette.shader = PERSON_OCCLUSION
+	walker_outline.material_override = silhouette
 	walker_outline.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
 	walker_outline.modulate = Color.WHITE
 	walker_outline.render_priority = 8
@@ -438,11 +440,13 @@ func _process(delta: float) -> void:
 	var covered := on_foot and _person_hidden(walker)
 	walker_outline.visible = covered
 	if covered:
-		walker_outline.texture = walker.texture
+		if walker_outline.texture != walker.texture:
+			walker_outline.texture = walker.texture
+			walker_outline.material_override.set_shader_parameter("avatar_texture",walker.texture)
 		walker_outline.region_rect = walker.region_rect
 		walker_outline.offset = walker.offset
 	if is_instance_valid(survival.hand):
-		survival._equipment_on_top(covered)
+		survival._equipment_on_top(false)
 	player_marker.visible = not on_foot
 	player_marker.position = cam.unproject_position((walker.position if on_foot else car_root.position) + actor_height)
 	player_marker.queue_redraw()
