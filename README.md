@@ -4,7 +4,7 @@ Sobrevivência isométrica nas ruas de Campo Grande, Mato Grosso do Sul.
 
 [**Jogar no navegador ou no celular**](https://contato673.github.io/CASO-ABERTO-GPT/) · [Versão Windows](versoes/Caso-Aberto-Windows.zip) · [Capturas de teste](testes-visuais/sobrevivencia/)
 
-Você começa a pé no abrigo da Rua Barão do Rio Branco. A primeira missão pede um kit de primeiros socorros na Pague Menos da Rua 13 de Maio. O minimapa marca o destino. Em locais trancados, quebrar um vidro libera a busca e alerta infectados próximos.
+Na primeira abertura desta versão, crie seu sobrevivente e leia o bilhete de Bia. Em um jogo novo, a história começa perto do Posto Barão, na Rua Barão do Rio Branco. A primeira missão pede um kit de primeiros socorros na Pague Menos da Rua 13 de Maio. O minimapa marca o destino. Em locais trancados, quebrar um vidro libera a busca e alerta infectados próximos.
 
 | Controle | Ação |
 | --- | --- |
@@ -23,9 +23,9 @@ Para vasculhar uma casa, aproxime-se da fachada e use o botão de interação. S
 
 Os quadradinhos verdes no minimapa indicam carros próximos. Os encontros com sobreviventes são raros. Alguns fogem dos infectados e conversam com você, enquanto outros atacam. O minimapa mostra vias, carros e o objetivo ativo. Os infectados têm animações de caminhada e sons que vêm da posição deles na rua.
 
-No Posto Barão, abra **Baú pessoal** a pé para guardar ou retirar até 60 itens. O conteúdo do baú é salvo no dispositivo e permanece após a derrota do personagem.
+Perto do Posto Barão, procure **Sua casa**, indicada pelo ícone azul no minimapa. Entre a pé para descansar e abrir o baú pessoal de 60 itens. O conteúdo do baú permanece após a derrota. No menu **Mobiliar**, use duas peças da mochila para montar um móvel e depois escolha onde colocá-lo. Móveis e aparência ficam salvos.
 
-Há três entregas para o abrigo. Depois da sequência, novos contratos ficam disponíveis após 20 minutos. Mochila, necessidades, estoque, carros e reputação são salvos no dispositivo. A rede do abrigo é uma progressão local para um jogador.
+A campanha **A última transmissão** tem 12 missões de busca, entrega e reconhecimento. Os quatro contratos de abastecimento depois da campanha podem ser repetidos após 20 minutos. O diário está disponível na mochila, no Posto Barão e em casa. Mochila, necessidades, estoque, carros e reputação são salvos no dispositivo. A rede do abrigo é uma progressão local para um jogador.
 
 ## Editar
 

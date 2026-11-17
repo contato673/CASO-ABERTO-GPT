@@ -5,6 +5,7 @@ extends Node3D
 
 signal request_enter
 signal request_exit
+signal request_actions
 signal money_delta(d: int)
 signal car_selected(path: String)
 
@@ -78,6 +79,7 @@ var cam: Camera3D
 var pos := Vector2(2.5, 2.5)
 var walk_t := 0.0
 var active := false
+var survival_mode := false
 var menu_open := false
 var work_cd := 0.0
 var notice_t := 0.0
@@ -104,6 +106,13 @@ var work_btn: Button
 func _ready() -> void:
 	position = ORIGIN
 	_load()
+	if survival_mode and not cfg.has("survival_house_seeded"):
+		owned["camisa"] = range(SHIRT.size())
+		owned["calca"] = range(PANTS.size())
+		cfg["survival_house_seeded"] = true
+		if furniture.is_empty():
+			furniture.append({"kind":"cama", "x":0.82, "z":3.5, "rot":0.0})
+		_save()
 	_build_room()
 	avatar = _make_avatar(cfg, self)
 	(avatar["node"] as Node3D).position = Vector3(pos.x, 0.0, pos.y)
@@ -184,7 +193,7 @@ func update(delta: float, jv: Vector2) -> void:
 
 
 func _unhandled_input(ev: InputEvent) -> void:
-	if not active or menu_open:
+	if not active or menu_open or (survival_mode and (get_parent().intro_state != 0 or get_parent().menu_open)):
 		return
 	if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT and ev.pressed:
 		_on_click(ev.position)
@@ -566,7 +575,8 @@ func _on_click(sp: Vector2) -> void:
 	furniture.remove_at(idx)
 	_start_ghost(str(it["kind"]), false, it)
 	_rebuild_furniture()
-	_save()
+	if not survival_mode:
+		_save()
 
 
 func _start_inv(kind: String) -> void:
@@ -574,7 +584,8 @@ func _start_inv(kind: String) -> void:
 		return
 	_add_inv(kind, -1)
 	_start_ghost(kind, true, {})
-	_save()
+	if not survival_mode:
+		_save()
 
 
 func _start_ghost(kind: String, from_inv: bool, old: Dictionary) -> void:
@@ -629,7 +640,10 @@ func _confirm_ghost() -> void:
 	_end_ghost()
 	_rebuild_furniture()
 	_save()
-	_fill_all()
+	if survival_mode:
+		_notice("Móvel colocado.")
+	else:
+		_fill_all()
 
 
 func _cancel_ghost() -> void:
@@ -745,7 +759,10 @@ func _build_hud() -> void:
 	btn_enter.pressed.connect(func(): request_enter.emit())
 	root.add_child(btn_enter)
 	btn_menu = _btn("Menu da casa", 160.0)
-	btn_menu.pressed.connect(_toggle_menu)
+	if survival_mode:
+		btn_menu.pressed.connect(func(): request_actions.emit())
+	else:
+		btn_menu.pressed.connect(_toggle_menu)
 	root.add_child(btn_menu)
 	btn_exit = _btn("Sair de casa", 206.0)
 	btn_exit.pressed.connect(func(): request_exit.emit())
@@ -936,7 +953,7 @@ func ask_name() -> void:
 	var cur := str(cfg.get("nome", ""))
 	if cur == "Você":
 		cur = ""
-	var r: Variant = JavaScriptBridge.eval("window.prompt('Digite o nome do seu detetive (até 14 letras):', %s)" % JSON.stringify(cur))
+	var r: Variant = JavaScriptBridge.eval("window.prompt('Digite o nome do seu sobrevivente (até 14 letras):', %s)" % JSON.stringify(cur))
 	if r != null:
 		var s := str(r).strip_edges()
 		if s.length() > 14:
@@ -1046,10 +1063,12 @@ func _notice(t: String) -> void:
 
 
 func _update_hud() -> void:
-	btn_enter.visible = not active
+	btn_enter.visible = not active and not survival_mode
 	btn_menu.visible = active
 	btn_exit.visible = active
+	notice_lbl.visible = active
 	if not active:
+		notice_lbl.text = ""
 		panel.visible = false
 		ghost_bar.visible = false
 

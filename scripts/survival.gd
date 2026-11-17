@@ -40,10 +40,24 @@ const EQUIPMENT_ART := {
 	"ammo": preload("res://assets/equipamento/ammo.png"),
 }
 const CONSUMABLES := {"food": "fome", "water": "sede", "med": "saude"}
+const STORY_QUESTS := 12
 const QUESTS := [
-	{"place": "pague_menos_13", "item": "med", "title": "Primeiros socorros", "request": "Busque um kit na Pague Menos da Rua 13 de Maio.", "reward": "water"},
-	{"place": "mercado", "item": "food", "title": "Rações para o abrigo", "request": "Busque uma conserva no Mercadão, Rua 7 de Setembro.", "reward": "med"},
-	{"place": "patio_central", "item": "parts", "title": "O rádio do abrigo", "request": "Recolha peças no Pátio Central Shopping, Rua Marechal Rondon.", "reward": "fuel"}
+	{"place":"pague_menos_13", "item":"med", "title":"Primeiros socorros", "request":"Busque um kit na Pague Menos da Rua 13 de Maio.", "reward":"water", "story":"Lia tem gente ferida no Posto Barão. Bia passou por lá antes de seguir para a estação."},
+	{"place":"mercado", "item":"food", "title":"Rações para o abrigo", "request":"Busque uma conserva no Mercadão, Rua 7 de Setembro.", "reward":"med", "story":"Enquanto durarem as buscas, alguém precisa manter o abrigo abastecido."},
+	{"place":"patio_central", "item":"parts", "title":"O rádio do abrigo", "request":"Recolha peças no Pátio Central Shopping, Rua Marechal Rondon.", "reward":"fuel", "story":"O rádio pode alcançar os postos que receberam os últimos comboios."},
+	{"place":"hotel_gaspar", "item":"", "title":"Quartos de passagem", "request":"Procure o livro de saída no Grande Hotel Gaspar.", "story":"O rádio voltou. Um voluntário disse que os nomes dos passageiros foram anotados no hotel.", "result":"Bia saiu com os voluntários rumo à estação. A lista registra uma segunda saída antes do amanhecer."},
+	{"place":"museu", "item":"", "title":"O segundo embarque", "request":"Confira o quadro de partidas junto ao Museu dos Trabalhadores Ferroviários.", "story":"O grupo de Bia levou feridos e dividiu a carga no caminho. O aviso na estação diz para onde.", "result":"O carro dos feridos parou perto da Drogaria São Bento. Há um pedido de curativos anotado no quadro."},
+	{"place":"drogaria_sao_bento_centro", "item":"med", "title":"Posto improvisado", "request":"Busque um kit na Drogaria São Bento do Centro.", "reward":"water", "story":"Os feridos da estação devem voltar ao Posto Barão. A farmácia é a última parada do carro."},
+	{"place":"centro_comercial", "item":"parts", "title":"Subir o sinal", "request":"Recolha peças no Edifício Centro Comercial.", "reward":"food", "story":"O pessoal do abrigo quer subir uma antena. O sinal precisa chegar aos postos do lado leste."},
+	{"place":"morada_bais", "item":"", "title":"Mapa dobrado", "request":"Procure a folha de rotas na Morada dos Baís.", "story":"A rede deixou um mapa em cada ponto de apoio. A cópia do Centro mostra por onde Bia passou.", "result":"Uma rota segue para o Parque das Nações. Na margem, Bia anotou que o carro precisa de combustível."},
+	{"place":"shopping_cg", "item":"fuel", "title":"Combustível para a volta", "request":"Busque um galão no Shopping Campo Grande.", "reward":"med", "story":"Lia vai preparar um carro para retirar quem ainda está do outro lado da cidade."},
+	{"place":"museu_dom_bosco", "item":"", "title":"Voz do lado leste", "request":"Confira o ponto de encontro no Museu das Culturas Dom Bosco.", "story":"A última coordenada do mapa aponta para o museu. A equipe deixou um recado na entrada.", "result":"Bia está viva. Ela voltou pelo Centro para buscar a lista de desaparecidos, que ficou nos Correios."},
+	{"place":"correios_calogeras", "item":"parts", "title":"A lista dos desaparecidos", "request":"Recupere o equipamento de transmissão nos Correios da Calógeras.", "reward":"food", "story":"A lista foi copiada para um transmissor portátil. Leve-o à Lia antes que a bateria acabe."},
+	{"place":"prefeitura", "item":"", "title":"A rede volta a falar", "request":"Confira o ponto de transmissão na Prefeitura.", "story":"Lia transmitiu os nomes. Falta confirmar se o ponto de retransmissão recebeu a mensagem de Bia.", "result":"Bia respondeu pelo rádio. A rede tem uma rota de volta e volta a publicar a lista ao anoitecer. Sua casa continua sendo o seu ponto de retorno."},
+	{"place":"comper_centro", "item":"water", "title":"Água para a enfermaria", "request":"Busque água no Supermercado Comper do Centro.", "reward":"food", "story":"A enfermaria precisa repor água para quem chega depois da ronda."},
+	{"place":"camelódromo", "item":"parts", "title":"Ferragens para a ronda", "request":"Procure peças no Camelódromo de Campo Grande.", "reward":"water", "story":"Os carrinhos e rádios da ronda estão sendo remendados com ferragens recuperadas."},
+	{"place":"pague_menos_miraflores", "item":"med", "title":"Kit para o plantão", "request":"Recolha um kit na Pague Menos da Miraflores.", "reward":"food", "story":"O estoque do plantão da noite foi aberto para atender o último comboio."},
+	{"place":"carrefour_shopping", "item":"fuel", "title":"Reserva do comboio", "request":"Busque combustível no Carrefour do Shopping Campo Grande.", "reward":"med", "story":"A rede mantém um galão de reserva para trazer feridos quando escurecer."},
 ]
 const NEEDS := ["saude", "fome", "sede", "energia"]
 const COLORS := [Color("#f47e80"), Color("#f4bc70"), Color("#73cde7"), Color("#d0dc80")]
@@ -88,6 +102,7 @@ var equipped := "bat"
 var outfit := ""
 var dirty_hands := false
 var sheltered := false
+var resume_at_home := false
 var survivor_group = SURVIVORS.new()
 var zombie_atlases: Array[Texture2D] = []
 var zombie_frame_sizes: Array[Vector2i] = []
@@ -238,7 +253,7 @@ func objective_text() -> String:
 		var item: String = task["item"]
 		var name := str(ITEM_NAMES[item]).to_lower()
 		if not bag.has(item) and chest.has(item):
-			return "%s\nRetire %s do baú para fazer a entrega." % [task["title"], name]
+			return "%s\nRetire %s do baú de casa para fazer a entrega." % [task["title"], name]
 		return "%s\nLeve %s ao abrigo da Rua Barão do Rio Branco." % [task["title"], name]
 	return "%s\n%s" % [task["title"], task["request"]]
 
@@ -272,7 +287,9 @@ func interact() -> void:
 	if not game.on_foot or game.menu_open or closest_site.is_empty() or down or action_time > 0.0:
 		return
 	opened = closest_site
-	if opened.get("context") == "survivor":
+	if opened.get("context") == "home":
+		game._enter_home()
+	elif opened.get("context") == "survivor":
 		_open_panel("survivor", str(opened["name"]) + " · " + str(opened["job"]))
 		_line(opened["bio"])
 		_line(opened["advice"])
@@ -297,6 +314,7 @@ func _inventory_menu() -> void:
 	if equipped == "pistol":
 		equipped_name += " · Munição ×%d" % int(bag.get("ammo", 0))
 	_line("Na mão: " + equipped_name)
+	_button("Diário de missões", _journal.bind(_inventory_menu))
 	if equipped != "fist":
 		_button("Guardar arma · Usar punhos", _equip.bind("fist"), "fist")
 	for item in WEAPONS:
@@ -336,7 +354,8 @@ func _equip(item: String) -> void:
 
 
 func _apply_outfit() -> void:
-	game.walker.texture = CLOTHES.get(outfit, game.PEDESTRIANS)
+	var texture: Texture2D = CLOTHES.get(outfit, game.PEDESTRIANS)
+	game.walker.texture = game.survivor_texture(texture, outfit.is_empty())
 
 
 func _change_outfit(item: String) -> void:
@@ -762,6 +781,8 @@ func _loot_menu() -> void:
 	var address := str(opened.get("address", ""))
 	if not address.is_empty():
 		_line(address)
+	if quest < QUESTS.size() and QUESTS[quest]["place"] == id and str(QUESTS[quest]["item"]).is_empty():
+		_button("Investigar · " + str(QUESTS[quest]["title"]), _survey.bind(id))
 	if not bool(stash["unlocked"]):
 		_line("O acesso está trancado. Quebrar o vidro faz barulho e pode atrair infectados próximos.")
 		_button("Quebrar o vidro", _break_window)
@@ -890,7 +911,7 @@ func _take(id: String, item: String) -> void:
 		items.erase(item)
 	if items.is_empty():
 		stash["ready_at"] = _now() + float(stash["delay"])
-	if quest < QUESTS.size() and item == QUESTS[quest]["item"]:
+	if quest < QUESTS.size() and item == QUESTS[quest]["item"] and (id == QUESTS[quest]["place"] or quest < 3):
 		supply_found = true
 	save()
 	_loot_menu()
@@ -902,6 +923,7 @@ func _stash(p: Dictionary) -> Dictionary:
 		var old: Dictionary = containers[id]
 		var loot: Dictionary = old["items"]
 		if not loot.is_empty() or _now() < float(old["ready_at"]):
+			_reserve_quest_supply(id, loot, float(old["ready_at"]) > _now())
 			return old
 	var random := RandomNumberGenerator.new()
 	var cycle := int(containers.get(id, {}).get("cycle", 0)) + 1
@@ -921,9 +943,7 @@ func _stash(p: Dictionary) -> Dictionary:
 	for i in count:
 		var item: String = pool[random.randi_range(0, pool.size() - 1)]
 		stock[item] = int(stock.get(item, 0)) + 1
-	for task in QUESTS:
-		if id == task["place"] and (quest < QUESTS.size() and id == QUESTS[quest]["place"]):
-			stock[task["item"]] = maxi(1, int(stock.get(task["item"], 0)))
+	_reserve_quest_supply(id, stock, false)
 	var delay := random.randi_range(LOOT_MIN_SECONDS, LOOT_MAX_SECONDS)
 	var lock_rate := 0.42 if type == "residence" else (0.55 if type != "other" else 0.36)
 	var lock := id == "pague_menos_13" or id == "patio_central" or random.randf() < lock_rate
@@ -935,6 +955,14 @@ func _stash(p: Dictionary) -> Dictionary:
 	var entry := {"items":stock, "unlocked":not lock, "delay":delay, "cycle":cycle, "ready_at":(_now() + delay if stock.is_empty() else 0.0)}
 	containers[id] = entry
 	return entry
+
+
+func _reserve_quest_supply(id: String, stock: Dictionary, waiting: bool) -> void:
+	if waiting or supply_found or quest >= QUESTS.size() or QUESTS[quest]["place"] != id:
+		return
+	var item: String = QUESTS[quest]["item"]
+	if not item.is_empty() and not stock.has(item):
+		stock[item] = 1
 
 
 func _stock_new_equipment(id: String, stock: Dictionary) -> void:
@@ -972,7 +1000,7 @@ func _shelter_menu() -> void:
 	else:
 		_line(objective_text())
 	_button("Descansar", _rest)
-	_button("Baú pessoal · %d/%d" % [_item_count(chest), CHEST_CAPACITY], _chest_menu.bind(true))
+	_button("Diário de missões", _journal.bind(_shelter_menu))
 
 
 func _chest_menu(deposit: bool) -> void:
@@ -1001,11 +1029,15 @@ func _chest_menu(deposit: bool) -> void:
 		_button(label, _transfer_item.bind(item, deposit, count), item)
 		if count > 1:
 			_button("Só um · %s" % ITEM_NAMES[item], _transfer_item.bind(item, deposit, 1), item)
-	_button("Voltar ao abrigo", _shelter_menu)
+	_button("Voltar à casa", _personal_home_menu)
+
+
+func at_personal_home() -> bool:
+	return not down and sites.has("personal_home") and game.walk_pos.distance_to(_entrance(sites["personal_home"])) < 7.5
 
 
 func _at_shelter() -> bool:
-	return not down and game.on_foot and game.walk_pos.distance_to(safe) <= 8.0
+	return not down and game.in_home and game.intro_state == 0
 
 
 func _transfer_item(item: String, deposit: bool, requested: int) -> void:
@@ -1035,23 +1067,124 @@ func _transfer_item(item: String, deposit: bool, requested: int) -> void:
 
 
 func _submit() -> void:
+	if quest >= QUESTS.size() or not supply_found:
+		return
 	var task: Dictionary = QUESTS[quest]
 	var item: String = task["item"]
+	if item.is_empty() or not bag.has(item):
+		return
 	_remove_item(item)
 	var reward: String = task["reward"]
 	bag[reward] = int(bag.get(reward, 0)) + 1
+	_advance_quest()
+	_notify("Entrega concluída. Reputação %d." % reputation)
+	_shelter_menu()
+
+
+func _survey(id: String) -> void:
+	if quest >= QUESTS.size():
+		return
+	var task: Dictionary = QUESTS[quest]
+	if task["place"] != id or not str(task["item"]).is_empty():
+		return
+	_advance_quest()
+	_open_panel("report", str(task["title"]))
+	_line(task["result"])
+	_button("Continuar", close)
+
+
+func _advance_quest() -> void:
 	quest += 1
 	reputation += 1
 	supply_found = false
 	if quest == QUESTS.size():
 		next_contract = _now() + 1200.0
 	save()
-	_notify("Entrega concluída. Reputação %d." % reputation)
-	_shelter_menu()
+
+
+func _journal(back: Callable) -> void:
+	_open_panel("journal", "Diário · %d/%d missões" % [quest, QUESTS.size()])
+	for index in QUESTS.size():
+		if index == 0 or index == STORY_QUESTS:
+			_line("Campanha · A última transmissão" if index == 0 else "Contratos da rede")
+		var task: Dictionary = QUESTS[index]
+		var status := "Concluída" if index < quest else ("Em andamento" if index == quest else "Pendente")
+		_line("%02d · %s — %s" % [index + 1, task["title"], status])
+		if index == quest:
+			_line(task["story"])
+			_line(task["request"])
+	_button("Voltar", back)
+
+
+func _personal_home_menu() -> void:
+	if not _at_shelter():
+		return
+	_open_panel("personal_home", "Sua casa")
+	_line("Casa de " + str(game.home.cfg["nome"]))
+	_button("Baú pessoal · %d/%d" % [_item_count(chest), CHEST_CAPACITY], _chest_menu.bind(true))
+	_button("Descansar", _home_rest)
+	_button("Mobiliar", _furniture_menu)
+	_button("Diário de missões", _journal.bind(_personal_home_menu))
+	_button("Sair de casa", game._exit_home)
+
+
+func _home_rest() -> void:
+	if not _at_shelter():
+		return
+	if float(needs["energia"]) >= 98.0:
+		_notify("Você já está descansado.")
+		return
+	needs["energia"] = 100.0
+	needs["fome"] = maxf(0.0, float(needs["fome"]) - 4.0)
+	needs["sede"] = maxf(0.0, float(needs["sede"]) - 5.0)
+	_update_hud()
+	_notify("Você descansou em casa.")
+	save()
+
+
+func _furniture_menu() -> void:
+	if not _at_shelter():
+		return
+	var room: Node3D = game.home
+	_open_panel("furniture", "Móveis")
+	_line("Peças disponíveis na mochila · %d" % int(bag.get("parts", 0)))
+	_line("Monte móveis com peças ou recoloque os que já guardou.")
+	for kind in room.FURN:
+		var name := str(room.FURN[kind]["nome"])
+		if room._inv(kind) > 0:
+			_button("Colocar " + name, _place_furniture.bind(kind))
+		else:
+			_button("Montar %s · 2 peças" % name, _craft_furniture.bind(kind))
+	_button("Voltar à casa", _personal_home_menu)
+
+
+func _craft_furniture(kind: String) -> void:
+	if not _at_shelter() or not game.home.FURN.has(kind):
+		return
+	if int(bag.get("parts", 0)) < 2:
+		_notify("Você precisa de duas peças na mochila.")
+		return
+	if supply_found and quest < QUESTS.size() and QUESTS[quest]["item"] == "parts" and int(bag["parts"]) <= 2:
+		_notify("Separe uma peça para a entrega antes de montar o móvel.")
+		return
+	_remove_item("parts")
+	_remove_item("parts")
+	game.home._add_inv(kind, 1)
+	game.home._save()
+	save()
+	_furniture_menu()
+
+
+func _place_furniture(kind: String) -> void:
+	if _at_shelter() and game.home._inv(kind) > 0:
+		close()
+		game.home._start_inv(kind)
 
 
 func _repeat() -> void:
-	quest = 0
+	if quest < QUESTS.size() or _now() < next_contract:
+		return
+	quest = STORY_QUESTS
 	supply_found = false
 	save()
 	_shelter_menu()
@@ -1516,7 +1649,7 @@ func save() -> void:
 	var player: Vector2 = game._actor_pos()
 	var f := FileAccess.open(SAVE, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"on_foot":game.on_foot,"areas":containers,"bag":bag,"equipped":equipped,"outfit":outfit,"dirty_hands":dirty_hands,"chest":chest,"needs":needs,"taken":taken,"parked_heading_v2":true,"vehicle":active_vehicle,
+		f.store_string(JSON.stringify({"on_foot":game.on_foot,"in_home":game.in_home and game.intro_state == 0,"areas":containers,"bag":bag,"equipped":equipped,"outfit":outfit,"dirty_hands":dirty_hands,"chest":chest,"needs":needs,"taken":taken,"parked_heading_v2":true,"vehicle":active_vehicle,
 			"fuel":fuel,"quest":quest,"found":supply_found,"reputation":reputation,"next":next_contract,"x":player.x,"y":player.y,
 			"cx":game.car_pos.x,"cy":game.car_pos.y,"heading":game.car_heading}))
 
@@ -1528,6 +1661,7 @@ func _load_progress() -> void:
 	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE))
 	if not data is Dictionary:
 		return
+	resume_at_home = bool(data.get("in_home", false))
 	containers = data.get("areas", {})
 	if not data.has("equipped"):
 		for id in ["mercado", "patio_central"]:

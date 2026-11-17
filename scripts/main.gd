@@ -157,6 +157,11 @@ const LANDMARKS := [
 	{"id": "bioparque", "name": "Bioparque Pantanal", "model": "bioparque", "clear": 80.0, "res": 72.0, "yaw": 0.185, "x": 615.8, "y": 556.8, "mx": 631.0, "my": 484.0, "snapDist": 32.0, "npc": "Bióloga Renata", "line": "O Bioparque é o maior aquário de água doce do mundo. Cada tanque tem registro de entrada e saída. Alguém assinou o livro com um nome que não existe."},
 ]
 
+const BACKGROUNDS := [
+	["Socorrista", "Você sabia onde procurar remédios e como manter alguém vivo com pouco."],
+	["Entregador", "Você conhecia as ruas do Centro e as entradas de serviço do comércio."],
+	["Técnico de rádio", "Você consertava equipamentos de comunicação e conhecia as frequências da região."],
+]
 const HOME_SCRIPT := preload("res://scripts/home.gd")
 const CASES := [
 	{"name": "O relógio da estação", "steps": [
@@ -265,7 +270,6 @@ var cached_target := ""
 var cached_target_frame := -1
 var btn_talk: Button
 var btn_book: Button
-var home_icon_ready := false
 var mm_scale := 1.3
 var BTN_SZ := Vector2(200, 34)
 var cam_focus := Vector3.ZERO
@@ -333,11 +337,23 @@ func _ready() -> void:
 	walker.add_child(walker_outline)
 	walker.hide()
 	_build_fixed_people()
+	_place_personal_home()
+	home = HOME_SCRIPT.new()
+	home.survival_mode = true
+	home.request_exit.connect(_exit_home)
+	home.request_actions.connect(survival._personal_home_menu)
+	add_child(home)
+	home.cam = cam
 	add_child(survival)
 	survival.setup(self)
 	cam_focus = walker.position
 	_update_camera(1.0)
 	_start_music()
+	_layout_ui()
+	if not home.cfg.get("survival_created", false):
+		_intro_begin()
+	elif survival.resume_at_home:
+		_enter_home()
 
 
 func _pm(i: int) -> void:
@@ -352,6 +368,11 @@ func _process(delta: float) -> void:
 	if ui_dirty:
 		_layout_ui()
 	_touch_vis()
+	if in_home:
+		if intro_state == 0 and not menu_open:
+			home.update(delta, joy_vec)
+		_update_camera(delta)
+		return
 	if not menu_open:
 		if on_foot:
 			_walk(delta)
@@ -395,6 +416,16 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if in_home:
+		if intro_state == 0 and event is InputEventKey and event.pressed and not event.echo:
+			match event.keycode:
+				KEY_E, KEY_I, KEY_C: survival._personal_home_menu()
+				KEY_ESCAPE:
+					if menu_open:
+						survival.close()
+					else:
+						_exit_home()
+		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if survival.walk_location_click(event.position):
 			get_viewport().set_input_as_handled()
@@ -579,12 +610,16 @@ func _build_world() -> void:
 		if _landmark_spot(bb.get_center()):
 			continue
 		var h := maxf(float(b["h"]), 3.0)
-		for plot in road_clearance.clip(pts):
+		var plots := road_clearance.clip(pts)
+		if plots.is_empty() and str(b.get("osm_way", "")) == "153512340":
+			plots = _market_plots(pts)
+		for plot in plots:
 			if _bbox(plot).get_area() < 7.0 or Geometry2D.triangulate_polygon(plot).is_empty() or not road_clearance.is_clear(plot):
 				continue
-			_add_bpoly(plot, h, "residence" if h < 9.0 and not b.has("site") else "", str(b.get("site", "")))
+			_add_bpoly(plot, h, "residence" if h < 9.0 and not b.has("site") else "", str(b.get("osm_way", "")))
 			_bk_add(bld_bk, _bbox(plot).get_center())
-			_city_building(bst, plot, h, i, str(b.get("site", "")))
+			var model_site := "mercadao" if str(b.get("osm_way", "")) == "153512340" else str(b.get("site", ""))
+			_city_building(bst, plot, h, i, model_site)
 		if i % 125 == 124:
 			_add_mesh(bst, _mat(Color.WHITE, true), 0.0)
 			bst.clear()
@@ -1576,38 +1611,43 @@ func _swap_car(path: String) -> void:
 	car_root.add_child(proxy)
 
 
-func _enter_home() -> void:
-	if in_home or menu_open or on_foot:
+func _enter_home(creation := false) -> void:
+	if in_home or (not creation and (menu_open or not on_foot or not survival.at_personal_home())):
 		return
-	street_pos = car_pos
-	street_heading = car_heading
 	in_home = true
-	poi_index = -1
 	car_speed = 0.0
-	car_root.visible = false
-	minimap.visible = false
-	prompt_label.visible = false
-	ui_panel.visible = false
-	cam.size = 7.6
+	joy_vec = Vector2.ZERO
+	joy_active = false
+	walker.hide()
+	car_root.hide()
+	minimap.hide()
+	prompt_label.hide()
+	ui_panel.hide()
+	player_marker.hide()
+	survival.close()
+	cam.size = 8.0
 	home.enter()
+	if not creation:
+		survival.save()
 	cam_focus = home.focus_point()
+	_update_camera(1.0)
 
 
 func _exit_home() -> void:
 	if not in_home or intro_state == 1:
 		return
-	if intro_state == 2:
-		intro_state = 0
+	intro_state = 0
 	in_home = false
+	survival.close()
 	home.leave()
-	car_pos = street_pos
-	car_heading = street_heading
-	car_root.position = Vector3(car_pos.x, 0.0, car_pos.y)
-	car_root.rotation.y = atan2(cos(car_heading), sin(car_heading))
-	car_root.visible = true
-	minimap.visible = true
+	survival._apply_outfit()
+	walker.visible = on_foot
+	car_root.visible = not on_foot and survival.active_vehicle >= 0
+	minimap.show()
 	cam.size = STREET_VIEW
-	cam_focus = car_root.position
+	cam_focus = walker.position if on_foot else car_root.position
+	street_last_pos = Vector2.INF
+	survival.save()
 
 
 func _update_camera(delta: float) -> void:
@@ -1948,36 +1988,39 @@ func _intro_panel() -> VBoxContainer:
 	intro_layer = CanvasLayer.new()
 	intro_layer.layer = 20
 	add_child(intro_layer)
-	var vs := get_viewport().get_visible_rect().size
-	var pn := PanelContainer.new()
-	if vs.x > vs.y * 1.15:
-		# tela larga: painel na direita, o personagem aparece à esquerda
-		pn.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
-		pn.offset_left = -minf(430.0, vs.x * 0.45) - 12.0
-		pn.offset_right = -12.0
-		pn.offset_top = 12.0
-		pn.offset_bottom = -12.0
-	else:
-		pn.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-		pn.grow_vertical = Control.GROW_DIRECTION_BEGIN
-		var mx := maxf(12.0, (vs.x - 600.0) * 0.5)
-		pn.offset_left = mx
-		pn.offset_right = -mx
-		pn.offset_bottom = -16.0
-	pn.add_theme_stylebox_override("panel", _intro_style())
-	intro_layer.add_child(pn)
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 8)
-	pn.add_child(vb)
-	return vb
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _intro_style())
+	intro_layer.add_child(panel)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
+	var rows := VBoxContainer.new()
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", 7)
+	scroll.add_child(rows)
+	var place := func():
+		if is_instance_valid(panel):
+			_position_intro(panel, rows)
+	rows.minimum_size_changed.connect(place)
+	place.call_deferred()
+	return rows
+
+
+func _position_intro(panel: PanelContainer, rows: VBoxContainer) -> void:
+	var viewport := get_viewport().get_visible_rect().size
+	var width := minf(viewport.x - 24.0, 500.0 if ph else 420.0)
+	var height := minf(rows.get_combined_minimum_size().y + 28.0, viewport.y * (0.70 if ph else 0.92))
+	panel.size = Vector2(width, height)
+	panel.position = Vector2((viewport.x - width) * 0.5 if ph else viewport.x - width - 20.0,
+		viewport.y - panel.size.y - 14.0 if ph else (viewport.y - panel.size.y) * 0.5)
 
 
 func _intro_begin() -> void:
-	_enter_home()
+	_enter_home(true)
 	intro_state = 1
 	var vb := _intro_panel()
 	var t := Label.new()
-	t.text = "Crie o seu detetive"
+	t.text = "Crie seu sobrevivente"
 	t.add_theme_font_size_override("font_size", 30)
 	t.add_theme_color_override("font_color", Color(0.92, 0.76, 0.42))
 	vb.add_child(t)
@@ -2004,6 +2047,13 @@ func _intro_begin() -> void:
 		ne.text = cur
 		ne.text_changed.connect(func(tx: String): home._on_name_changed(tx))
 		vb.add_child(ne)
+	var origin_choice := OptionButton.new()
+	origin_choice.custom_minimum_size.y = 44.0
+	for role in BACKGROUNDS:
+		origin_choice.add_item(str(role[0]))
+	origin_choice.select(clampi(int(home.cfg.get("survival_background", 0)), 0, BACKGROUNDS.size() - 1))
+	origin_choice.item_selected.connect(func(index: int): home.cfg["survival_background"] = index)
+	vb.add_child(origin_choice)
 	for r in home.CAT_ROWS:
 		var key := str(r[0])
 		var count := int(r[2])
@@ -2013,18 +2063,18 @@ func _intro_begin() -> void:
 		hb.add_child(lab)
 		var pv := Button.new()
 		pv.text = "<"
-		pv.custom_minimum_size = Vector2(68, 50)
+		pv.custom_minimum_size = Vector2(52, 40)
 		pv.pressed.connect(_intro_cycle.bind(key, -1, count))
 		hb.add_child(pv)
 		var nx := Button.new()
 		nx.text = ">"
-		nx.custom_minimum_size = Vector2(68, 50)
+		nx.custom_minimum_size = Vector2(52, 40)
 		nx.pressed.connect(_intro_cycle.bind(key, 1, count))
 		hb.add_child(nx)
 		vb.add_child(hb)
 		intro_lbls[key] = lab
 	var go := Button.new()
-	go.text = "Começar investigação"
+	go.text = "Ler o bilhete de Bia"
 	go.custom_minimum_size = Vector2(0, 60)
 	go.pressed.connect(_intro_story)
 	vb.add_child(go)
@@ -2046,27 +2096,28 @@ func _intro_refresh() -> void:
 func _intro_story() -> void:
 	var nm := str(home.cfg.get("nome", "")).strip_edges()
 	if nm == "" or nm == "Você":
-		nm = "Detetive"
+		nm = "Alex"
 		home._on_name_changed(nm)
-	home.cfg["intro_v"] = 2
-	home._save()
 	intro_state = 2
 	var vb := _intro_panel()
 	var t := Label.new()
-	t.text = "Primeiro dia"
+	t.text = "A última transmissão"
 	t.add_theme_font_size_override("font_size", 30)
 	t.add_theme_color_override("font_color", Color(0.92, 0.76, 0.42))
 	vb.add_child(t)
 	var tx := Label.new()
-	tx.text = "Hoje é o seu primeiro dia na Central de Investigação, %s.\n\nO Sargento Lima já está esperando por você. Dirija até o ponto dourado no minimapa. Pare na Central. Use Descer ou F para caminhar, o botão de conversa ou E para falar e C para abrir o caderno." % nm
+	var role: Array = BACKGROUNDS[clampi(int(home.cfg.get("survival_background", 0)), 0, BACKGROUNDS.size() - 1)]
+	tx.text = "%s, o apagão cortou Campo Grande no meio da noite. %s\n\nSua irmã Bia saiu para ajudar na triagem e deixou a chave da casa e um bilhete: ‘Quando o rádio cair, procure a Lia no Posto Barão’.\n\nO abrigo perdeu contato com a estação. Lia precisa de remédios e de uma linha de suprimentos antes que alguém possa ir atrás da Bia." % [nm, role[1]]
 	tx.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tx.custom_minimum_size = Vector2(300, 0)
-	tx.add_theme_font_size_override("font_size", 24)
+	tx.add_theme_font_size_override("font_size", 19)
 	vb.add_child(tx)
 	var ok := Button.new()
-	ok.text = "Entendi"
+	ok.text = "Sair para a cidade"
 	ok.custom_minimum_size = Vector2(0, 60)
 	ok.pressed.connect(func():
+		home.cfg["survival_created"] = true
+		home._save()
 		_intro_clear()
 		_exit_home()
 		home._update_hud())
@@ -2178,6 +2229,20 @@ func _label_bg(l: Label, pad_x: float, pad_y: float) -> void:
 
 
 func _touch_vis() -> void:
+	if in_home:
+		btn_car.hide()
+		btn_talk.hide()
+		btn_book.hide()
+		btn_attack.hide()
+		nav_arrow.hide()
+		case_label.hide()
+		street_label.hide()
+		survival.hud.visible = intro_state == 0
+		joy.visible = intro_state == 0 and ph and not menu_open
+		home.btn_menu.visible = intro_state == 0 and not menu_open and home.ghost.is_empty()
+		home.btn_exit.visible = intro_state == 0 and not menu_open and home.ghost.is_empty()
+		return
+	survival.hud.show()
 	btn_car.visible = not menu_open and survival.vehicle_available()
 	btn_car.text = survival.vehicle_caption() + ("" if ph else " [F]")
 	if not on_foot:
@@ -2267,25 +2332,17 @@ func _layout_ui() -> void:
 	ui_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	ui_portrait.custom_minimum_size = Vector2(120, 120) if ph else Vector2(112, 112)
 	ui_portrait.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	if home != null and home.btn_exit != null and ph:
+	if home != null and home.btn_exit != null:
 		home.btn_exit.custom_minimum_size = Vector2(152, 64)
 		home.btn_exit.size = Vector2(152, 64)
 		home.btn_exit.position = Vector2(16, vs.y - 150.0)
 		home.btn_menu.custom_minimum_size = Vector2(152, 64)
 		home.btn_menu.size = Vector2(152, 64)
 		home.btn_menu.position = Vector2(16, vs.y - 226.0)
-	if home != null and home.btn_enter != null:
-		var he: Button = home.btn_enter
-		if not home_icon_ready:
-			home_icon_ready = true
-			he.text = ""
-			he.flat = true
-			he.focus_mode = Control.FOCUS_NONE
-			he.draw.connect(_draw_icon.bind(he, "home"))
-		he.custom_minimum_size = Vector2(88, 88)
-		he.size = Vector2(88, 88)
-		he.position = Vector2(16, vs.y - 88.0 - 40.0)
-		he.queue_redraw()
+	if is_instance_valid(intro_layer):
+		var intro_panel: PanelContainer = intro_layer.get_child(0)
+		var intro_rows: VBoxContainer = intro_panel.get_child(0).get_child(0)
+		_position_intro(intro_panel, intro_rows)
 	nav_arrow.queue_redraw()
 	minimap.queue_redraw()
 
@@ -2750,6 +2807,9 @@ func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: floa
 		"morada_bais":
 			wall = Color("#e4bd57")
 			roof = Color("#70534b")
+		"mercadao":
+			wall = Color("#cac3ac")
+			roof = Color("#dfe5df")
 		"market":
 			wall = Color("#c1a179")
 			roof = Color("#78645b")
@@ -2780,7 +2840,10 @@ func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: floa
 	var plinth_height := 0.40 if height > 9.0 else 0.25
 	_walls(st, pts, plinth_height, wall.darkened(0.28))
 	_walls(st, pts, height - 0.27, wall, plinth_height)
-	if pts.size() == 4 and height < 6.5 and index % 4 != 0:
+	if site == "mercadao":
+		_roof(st, pts, height, roof)
+		_market_roof_ribs(st, pts, height, roof)
+	elif pts.size() == 4 and height < 6.5 and index % 4 != 0:
 		_hip_roof(st, pts, height, roof)
 	else:
 		_roof(st, pts, height, roof)
@@ -2803,8 +2866,19 @@ func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: floa
 		if site == "gaspar":
 			for balcony in range(1, 4):
 				var level := float(balcony) * height / 4.0
-				_face_c(st, middle + normal * 0.075 + Vector3.UP * level, Vector3.UP * 0.14, span * length * 0.5, wall.lightened(0.24))
-				_face_c(st, middle + normal * 0.06 + Vector3.UP * (level + 0.35), Vector3.UP * 0.045, span * length * 0.5, Color("#665965"))
+				_face_c(st, middle + normal * 0.20 + Vector3.UP * level, Vector3.UP * 0.17, span * length * 0.5, wall.lightened(0.24))
+				_face_c(st, middle + normal * 0.22 + Vector3.UP * (level + 0.52), Vector3.UP * 0.06, span * length * 0.5, Color("#665965"))
+				for post in range(1, maxi(2, ceili(length / 1.9))):
+					var offset := (float(post) / maxf(2.0, ceilf(length / 1.9)) - 0.5) * length
+					_face_c(st, middle + normal * 0.23 + span * offset + Vector3.UP * (level + 0.33),
+						Vector3.UP * 0.19, span * 0.035, Color("#806f73"))
+		elif site == "mercadao":
+			_face_c(st, middle + normal * 0.04 + Vector3.UP * 2.50, Vector3.UP * 0.42, span * length * 0.48, Color("#79918b"))
+			for bay in range(1, maxi(2, floori(length / 4.0))):
+				var offset := (float(bay) / maxf(2.0, floorf(length / 4.0)) - 0.5) * length
+				_face_c(st, middle + normal * 0.06 + span * offset + Vector3.UP * 1.15,
+					Vector3.UP * 1.02, span * minf(1.18, length * 0.18), Color("#465e60"))
+			continue
 		elif site in ["museum", "arena"]:
 			_face_c(st, middle + normal * 0.05 + Vector3.UP * (height - 0.5), Vector3.UP * 0.28, span * length * 0.5, wall.lightened(0.17))
 		elif site in ["casa_artesao", "morada_bais"]:
@@ -2826,6 +2900,30 @@ func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: floa
 				_face_c(st, center, Vector3.UP * 0.56, span * 0.45, glass)
 				if height > 6.8 or not site.is_empty():
 					_face_c(st, center - Vector3.UP * 0.51 + normal * 0.018, Vector3.UP * 0.08, span * 0.56, wall.lightened(0.22))
+
+
+func _market_plots(footprint: PackedVector2Array) -> Array[PackedVector2Array]:
+	var result: Array[PackedVector2Array] = []
+	var bounds := _bbox(footprint)
+	# An internal service lane can produce a hole. Clip smaller sections independently
+	# so the geometry keeps the building around the lane instead of losing the whole block.
+	for x in range(0, ceili(bounds.size.x), 16):
+		for y in range(0, ceili(bounds.size.y), 16):
+			var center := bounds.position + Vector2(x + 8, y + 8)
+			var cell := _rectangle(center, Vector2.DOWN, 16.0, 16.0)
+			for chunk in Geometry2D.intersect_polygons(footprint, cell):
+				result.append_array(road_clearance.clip(chunk))
+	return result
+
+
+func _market_roof_ribs(st: SurfaceTool, footprint: PackedVector2Array, height: float, roof: Color) -> void:
+	var bounds := _bbox(footprint)
+	# Clip the cover seams to the real footprint, including the recess by the parking area.
+	for x in range(2, ceili(bounds.size.x), 3):
+		var center := Vector2(bounds.position.x + x, bounds.get_center().y)
+		var seam := _rectangle(center, Vector2.DOWN, 0.17, bounds.size.y + 1.0)
+		for piece in Geometry2D.intersect_polygons(footprint, seam):
+			_roof(st, piece, height + 0.025, roof.darkened(0.12))
 
 
 func _arch_opening(st: SurfaceTool, pos: Vector3, along: Vector3, out: Vector3, half_width: float, body: float, color: Color) -> void:
@@ -3239,6 +3337,70 @@ func _car_hits_traffic(p: Vector2) -> bool:
 
 # ---------- caso 1: sistema de quest (individual, com pistas e acusação) ----------
 
+func _place_personal_home() -> void:
+	var base: Dictionary = {}
+	for point in pois:
+		if str(point["id"]) == "central":
+			base = point
+			break
+	if base.is_empty():
+		return
+	var origin: Vector2 = base["npc_pos"]
+	var chosen := {}
+	var closest := INF
+	for building in building_polys:
+		var box: Rect2 = building["bb"]
+		var center_distance := origin.distance_to(box.get_center())
+		if building["use"] != "residence" or not building["site"].is_empty() or center_distance < 16.0 or center_distance > 80.0:
+			continue
+		var shape: PackedVector2Array = building["pts"]
+		for i in shape.size():
+			var a := shape[i]
+			var b := shape[(i + 1) % shape.size()]
+			var edge := a.lerp(b, 0.5)
+			var normal := a.direction_to(b).orthogonal()
+			for side in [-1.0, 1.0]:
+				var entrance := edge + normal * float(side) * 1.55
+				if _walk_blocked(entrance):
+					continue
+				var lane := _road_near(entrance, true)
+				if lane.is_empty() or entrance.distance_squared_to(lane[0]) > 18.0 * 18.0:
+					continue
+				var distance := origin.distance_to(entrance)
+				if distance < closest and distance > 14.0:
+					closest = distance
+					chosen = {"id":"personal_home", "name":"Sua casa", "x":entrance.x, "y":entrance.y,
+						"access_x":lane[0].x, "access_y":lane[0].y, "npc_pos":entrance, "context":"home"}
+	if not chosen.is_empty():
+		pois.append(chosen)
+		var entry: Vector2 = chosen["npc_pos"]
+		_register_sign("Sua casa", Vector3(entry.x, 3.1, entry.y))
+
+
+func survivor_texture(texture: Texture2D, use_initial_shirt: bool) -> Texture2D:
+	if not is_instance_valid(home) or not home.cfg.get("survival_created", false):
+		return texture
+	var data: Dictionary = home.cfg
+	var image := texture.get_image()
+	var skin: Color = home.SKIN[clampi(int(data["pele"]), 0, home.SKIN.size() - 1)]
+	var hair: Color = home.HAIR_COL[clampi(int(data["cor_cabelo"]), 0, home.HAIR_COL.size() - 1)]
+	var shirt: Color = home.SHIRT[clampi(int(data["camisa"]), 0, home.SHIRT.size() - 1)]
+	var pants: Color = home.PANTS[clampi(int(data["calca"]), 0, home.PANTS.size() - 1)]
+	var palette := {Color("#9f6c50"):skin.darkened(0.22), Color("#e2ba8c"):skin,
+		Color("#31282a"):skin.darkened(0.35) if int(data["cabelo"]) == 3 else hair,
+		Color("#3d3b50"):pants}
+	if use_initial_shirt:
+		palette[Color("#a24c61")] = shirt
+	for y in range(320, 400):
+		for x in range(image.get_width()):
+			var pixel := image.get_pixel(x, y)
+			if palette.has(pixel):
+				image.set_pixel(x, y, palette[pixel])
+	walker.pixel_size = CHAR_SCALE * float(home.HEIGHTS[clampi(int(data["altura"]), 0, home.HEIGHTS.size() - 1)])
+	walker_outline.pixel_size = walker.pixel_size
+	return ImageTexture.create_from_image(image)
+
+
 func _setup_survival_places() -> void:
 	for point in pois:
 		if point.has("access_x"):
@@ -3290,7 +3452,8 @@ func _build_fixed_people() -> void:
 		if p.get("real_place", false):
 			var closest := INF
 			for building in building_polys:
-				if str(building["site"]) != str(p["id"]):
+				var source := str(building["site"])
+				if source.is_empty() or (source != str(p["id"]) and source != str(p.get("osm_way", ""))):
 					continue
 				var box: Rect2 = building["bb"]
 				var distance := box.get_center().distance_squared_to(perch)
@@ -3581,6 +3744,13 @@ func _draw_minimap() -> void:
 				minimap.draw_rect(Rect2(point - Vector2(3.5, 2.5), Vector2(7, 5)), Color("#7cdfb5"))
 	if on_foot and survival.active_vehicle >= 0:
 		minimap.draw_circle(_mm_pos(car_pos), 4.0, Color("#ffd284"))
+	if survival.sites.has("personal_home"):
+		var home_point := _mm_pos(survival.sites["personal_home"]["npc_pos"])
+		if Rect2(Vector2(8, 8), sz - Vector2(16, 16)).has_point(home_point):
+			var house := PackedVector2Array([home_point + Vector2(-6, 0), home_point + Vector2(0, -6),
+				home_point + Vector2(6, 0), home_point + Vector2(4, 0), home_point + Vector2(4, 5),
+				home_point + Vector2(-4, 5), home_point + Vector2(-4, 0)])
+			minimap.draw_colored_polygon(house, Color("#9bd9ee"))
 	var u := _minimap_heading()
 	var n := Vector2(-u.y, u.x)
 	var pl := PackedVector2Array([half + u * 13.0, half - u * 9.0 + n * 9.0, half - u * 4.0, half - u * 9.0 - n * 9.0])
