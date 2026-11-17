@@ -215,7 +215,7 @@ func _box(at: Vector3, size: Vector3, tint: Color, wall_finish := false) -> void
 	material.roughness = 1
 	if wall_finish and ResourceLoader.exists(LOCAL + "wall_panels.png"):
 		material.albedo_texture = load(LOCAL + "wall_panels.png")
-		material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
 		material.uv1_triplanar = true
 		material.uv1_scale = Vector3(1.35,1.35,1.35)
 		material.albedo_color = tint.lightened(.4)
@@ -730,6 +730,10 @@ func tick(delta: float,input: Vector2) -> void:
 	if hint.visible:
 		hint.text = "Levantar" if not posture.is_empty() else focused["caption"]
 		hint.reset_size()
+
+func has_nearby_action() -> bool:
+	return not posture.is_empty() or not _nearest().is_empty()
+
 
 func _available(entry: Dictionary) -> bool:
 	return entry["code"] != "survey" or (life.quest < life.QUESTS.size() and life.QUESTS[life.quest]["place"] == site["id"] and str(life.QUESTS[life.quest]["item"]).is_empty())

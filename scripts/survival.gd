@@ -295,8 +295,30 @@ func available() -> bool:
 	return game.on_foot and not closest_site.is_empty()
 
 
+func can_enter_nearby() -> bool:
+	return available() and not down and action_time <= 0.0 and (
+		closest_site.get("context") != "survivor" and not _exterior_survey(closest_site))
+
+
+func can_talk_or_survey() -> bool:
+	return available() and (closest_site.get("context") == "survivor"
+		or str(closest_site["id"]) == "central" or _exterior_survey(closest_site))
+
+
+func enter_nearby() -> void:
+	if game.menu_open or not can_enter_nearby():
+		return
+	opened = closest_site
+	if opened.get("context") == "home":
+		game._enter_home()
+	elif _stash(opened)["unlocked"]:
+		game._enter_interior(opened)
+	else:
+		_loot_menu()
+
+
 func walk_location_click(screen: Vector2) -> bool:
-	if not available() or game.menu_open:
+	if not can_talk_or_survey() or game.menu_open:
 		return false
 	var anchor: Vector2 = _entrance(closest_site)
 	var point: Vector2 = game.cam.unproject_position(Vector3(anchor.x, 2.8, anchor.y))
@@ -307,12 +329,10 @@ func walk_location_click(screen: Vector2) -> bool:
 
 
 func interact() -> void:
-	if not game.on_foot or game.menu_open or closest_site.is_empty() or down or action_time > 0.0:
+	if not can_talk_or_survey() or game.menu_open or down or action_time > 0.0:
 		return
 	opened = closest_site
-	if opened.get("context") == "home":
-		game._enter_home()
-	elif opened.get("context") == "survivor":
+	if opened.get("context") == "survivor":
 		_open_panel("survivor", str(opened["name"]) + " · " + str(opened["job"]))
 		_line(opened["bio"])
 		_line(opened["advice"])

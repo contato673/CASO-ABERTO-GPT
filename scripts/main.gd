@@ -280,6 +280,8 @@ var lead_ids: Array = []
 var cached_target := ""
 var cached_target_frame := -1
 var btn_talk: Button
+var btn_enter: Button
+var pixel_pass: ColorRect
 var btn_book: Button
 var btn_wheel: Button
 var mm_scale := 1.3
@@ -398,6 +400,7 @@ func _process(delta: float) -> void:
 	_daynight_tick(delta)
 	if ui_dirty:
 		_layout_ui()
+	pixel_pass.visible = not ph and not interior.active and not in_home
 	_touch_vis()
 	if interior.active:
 		_update_interior_camera(delta)
@@ -494,6 +497,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	match event.keycode:
 		KEY_E: _on_touch_interact()
+		KEY_ENTER, KEY_KP_ENTER: survival.enter_nearby()
 		KEY_F: _toggle_car()
 		KEY_I, KEY_C: _on_touch_notebook()
 		KEY_SPACE: survival.attack()
@@ -1343,13 +1347,13 @@ func _build_pixel_pass() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 0
 	add_child(layer)
-	var pass_rect := ColorRect.new()
-	pass_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pixel_pass = ColorRect.new()
+	pixel_pass.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var shader := ShaderMaterial.new()
 	shader.shader = PIXEL_WORLD
-	pass_rect.material = shader
-	layer.add_child(pass_rect)
-	pass_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pixel_pass.material = shader
+	layer.add_child(pixel_pass)
+	pixel_pass.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 
 func _detective_car_mesh(paint: Color) -> ArrayMesh:
@@ -2284,6 +2288,13 @@ func _build_touch_ui() -> void:
 	layer.add_child(nav_arrow)
 	btn_talk = _icon_btn("talk", _on_touch_interact)
 	layer.add_child(btn_talk)
+	btn_enter = Button.new()
+	btn_enter.focus_mode = Control.FOCUS_NONE
+	btn_enter.custom_minimum_size = Vector2(142,52)
+	btn_enter.add_theme_font_size_override("font_size",20)
+	btn_enter.pressed.connect(survival.enter_nearby)
+	layer.add_child(btn_enter)
+	btn_enter.hide()
 	btn_book = _icon_btn("book", _on_touch_notebook)
 	layer.add_child(btn_book)
 	btn_wheel = _icon_btn("wheel", survival.quick_wheel)
@@ -2379,9 +2390,10 @@ func _label_bg(l: Label, pad_x: float, pad_y: float) -> void:
 
 func _touch_vis() -> void:
 	if interior.active:
+		btn_enter.hide()
 		btn_car.hide()
 		btn_attack.hide()
-		btn_talk.visible = ph and not menu_open
+		btn_talk.visible = ph and not menu_open and interior.has_nearby_action()
 		btn_book.visible = not menu_open
 		btn_wheel.visible = ph and not menu_open
 		nav_arrow.hide()
@@ -2392,6 +2404,7 @@ func _touch_vis() -> void:
 		interior.hud.visible = not menu_open
 		return
 	if in_home:
+		btn_enter.hide()
 		btn_car.hide()
 		btn_talk.hide()
 		btn_book.hide()
@@ -2411,7 +2424,9 @@ func _touch_vis() -> void:
 	btn_car.text = survival.vehicle_caption() + ("" if ph else " [F]")
 	if not on_foot:
 		btn_car.text += " · %d%%" % roundi(survival.fuel)
-	btn_talk.visible = ph and not menu_open and survival.available()
+	btn_talk.visible = ph and not menu_open and survival.can_talk_or_survey()
+	btn_enter.visible = not menu_open and survival.can_enter_nearby()
+	btn_enter.text = "Entrar" if ph else "Entrar [Enter]"
 	btn_book.visible = not menu_open
 	btn_wheel.visible = ph and not menu_open and on_foot
 	btn_attack.visible = ph and not menu_open and on_foot
@@ -2482,6 +2497,7 @@ func _layout_ui() -> void:
 	btn_wheel.size = Vector2(70, 70)
 	btn_wheel.position = Vector2(23.0, vs.y - 315.0)
 	btn_talk.position = Vector2(vs.x - 88.0 - 16.0, vs.y - 88.0 * 2.0 - 56.0)
+	btn_enter.position = Vector2(vs.x - btn_enter.size.x - 16.0, vs.y - (295.0 if ph else 82.0))
 	if ph:
 		ui_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 		ui_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN

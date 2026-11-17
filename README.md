@@ -9,7 +9,8 @@ Em um jogo novo, crie seu sobrevivente e leia o bilhete de Bia. Esta atualizaç�
 | Controle | Ação |
 | --- | --- |
 | WASD, setas ou joystick | Caminhar ou dirigir |
-| E, tocar na construção próxima ou botão de interação | Abrir a entrada, interagir com móveis ou falar no abrigo |
+| Enter ou botão Entrar | Entrar em uma edificação próxima |
+| E ou botão de interação | Interagir com móveis, falar ou investigar |
 | F ou botão do veículo | Inspecionar, roubar, entrar ou descer do carro parado |
 | Espaço ou mira na tela | Atacar com o equipamento disponível |
 | I ou ícone da mochila | Abrir a grade e tocar num item para usá-lo, equipá-lo ou vesti-lo |
