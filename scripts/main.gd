@@ -137,6 +137,8 @@ var portrait_cache: Dictionary = {}
 var q_t := -8.0
 var slow_n := 0
 var home: Node3D
+var alpha = ALPHA_SCRIPT.new()
+var session_ready := false
 var in_home := false
 var street_pos := Vector2.ZERO
 var street_heading := 0.0
@@ -162,6 +164,7 @@ const BACKGROUNDS := [
 	["Entregador", "Você conhecia as ruas do Centro e as entradas de serviço do comércio."],
 	["Técnico de rádio", "Você consertava equipamentos de comunicação e conhecia as frequências da região."],
 ]
+const ALPHA_SCRIPT := preload("res://scripts/alpha.gd")
 const HOME_SCRIPT := preload("res://scripts/home.gd")
 const CASES := [
 	{"name": "O relógio da estação", "steps": [
@@ -270,6 +273,7 @@ var cached_target := ""
 var cached_target_frame := -1
 var btn_talk: Button
 var btn_book: Button
+var btn_wheel: Button
 var mm_scale := 1.3
 var BTN_SZ := Vector2(200, 34)
 var cam_focus := Vector3.ZERO
@@ -338,7 +342,19 @@ func _ready() -> void:
 	walker.hide()
 	_build_fixed_people()
 	_place_personal_home()
+	add_child(alpha)
+	alpha.setup(self)
+	if alpha.endpoint.is_empty():
+		_start_session("")
+
+
+func _start_session(account: String) -> void:
+	session_ready = true
 	home = HOME_SCRIPT.new()
+	if not account.is_empty():
+		save_path = save_path.replace(".json", "-" + account + ".json")
+		home.save_path = home.save_path.replace(".json", "-" + account + ".json")
+		survival.save_path = survival.save_path.replace(".json", "-" + account + ".json")
 	home.survival_mode = true
 	home.request_exit.connect(_exit_home)
 	home.request_actions.connect(survival._personal_home_menu)
@@ -363,6 +379,9 @@ func _pm(i: int) -> void:
 
 
 func _process(delta: float) -> void:
+	alpha.tick(delta)
+	if not session_ready or (not alpha.endpoint.is_empty() and not alpha.live):
+		return
 	_fps_tick(delta)
 	_daynight_tick(delta)
 	if ui_dirty:
@@ -416,6 +435,8 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not session_ready or (not alpha.endpoint.is_empty() and not alpha.live):
+		return
 	if in_home:
 		if intro_state == 0 and event is InputEventKey and event.pressed and not event.echo:
 			match event.keycode:
@@ -441,6 +462,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_F: _toggle_car()
 		KEY_I, KEY_C: _on_touch_notebook()
 		KEY_SPACE: survival.attack()
+		KEY_Q: survival.quick_wheel()
 		KEY_ESCAPE: survival.close()
 
 
@@ -618,7 +640,10 @@ func _build_world() -> void:
 				continue
 			_add_bpoly(plot, h, "residence" if h < 9.0 and not b.has("site") else "", str(b.get("osm_way", "")))
 			_bk_add(bld_bk, _bbox(plot).get_center())
-			var model_site := "mercadao" if str(b.get("osm_way", "")) == "153512340" else str(b.get("site", ""))
+			var model_site := str(b.get("site", ""))
+			match str(b.get("osm_way", "")):
+				"153512340": model_site = "mercadao"
+				"329915295": model_site = "correios_calogeras"
 			_city_building(bst, plot, h, i, model_site)
 		if i % 125 == 124:
 			_add_mesh(bst, _mat(Color.WHITE, true), 0.0)
@@ -1998,12 +2023,17 @@ func _intro_panel() -> VBoxContainer:
 	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rows.add_theme_constant_override("separation", 7)
 	scroll.add_child(rows)
-	var place := func():
-		if is_instance_valid(panel):
-			_position_intro(panel, rows)
-	rows.minimum_size_changed.connect(place)
-	place.call_deferred()
+	rows.minimum_size_changed.connect(_refresh_intro_layout)
+	_refresh_intro_layout.call_deferred()
 	return rows
+
+
+func _refresh_intro_layout() -> void:
+	if not is_instance_valid(intro_layer):
+		return
+	var panel: PanelContainer = intro_layer.get_child(0)
+	var rows: VBoxContainer = panel.get_child(0).get_child(0)
+	_position_intro(panel, rows)
 
 
 func _position_intro(panel: PanelContainer, rows: VBoxContainer) -> void:
@@ -2117,6 +2147,9 @@ func _intro_story() -> void:
 	ok.custom_minimum_size = Vector2(0, 60)
 	ok.pressed.connect(func():
 		home.cfg["survival_created"] = true
+		var background := clampi(int(home.cfg.get("survival_background", 0)), 0, 2)
+		var starting_skill: String = ["care", "field", "workshop"][background]
+		survival.skill_xp[starting_skill] = maxi(int(survival.skill_xp[starting_skill]), 3)
 		home._save()
 		_intro_clear()
 		_exit_home()
@@ -2145,6 +2178,9 @@ func _build_touch_ui() -> void:
 	layer.add_child(btn_talk)
 	btn_book = _icon_btn("book", _on_touch_notebook)
 	layer.add_child(btn_book)
+	btn_wheel = _icon_btn("wheel", survival.quick_wheel)
+	btn_wheel.tooltip_text = "Roda de itens"
+	layer.add_child(btn_wheel)
 	btn_car = Button.new()
 	btn_car.focus_mode = Control.FOCUS_NONE
 	btn_car.custom_minimum_size = Vector2(120, 52)
@@ -2179,6 +2215,11 @@ func _draw_icon(b: Button, kind: String) -> void:
 		b.draw_arc(c, 20.0 * k, 0.0, TAU, 24, cream, 3.0 * k)
 		b.draw_line(c - Vector2(25.0, 0.0) * k, c + Vector2(25.0, 0.0) * k, cream, 3.0 * k)
 		b.draw_line(c - Vector2(0.0, 25.0) * k, c + Vector2(0.0, 25.0) * k, cream, 3.0 * k)
+	elif kind == "wheel":
+		for i in 6:
+			var angle := TAU * i / 6.0
+			b.draw_circle(c + Vector2.from_angle(angle) * 19.0 * k, 4.6 * k, cream)
+		b.draw_circle(c, 3.0 * k, gold)
 	elif kind == "home":
 		b.draw_colored_polygon(PackedVector2Array([c + Vector2(-26, -2) * k, c + Vector2(0, -28) * k, c + Vector2(26, -2) * k]), gold)
 		b.draw_rect(Rect2(c + Vector2(-18, -2) * k, Vector2(36, 28) * k), cream)
@@ -2233,6 +2274,7 @@ func _touch_vis() -> void:
 		btn_car.hide()
 		btn_talk.hide()
 		btn_book.hide()
+		btn_wheel.hide()
 		btn_attack.hide()
 		nav_arrow.hide()
 		case_label.hide()
@@ -2249,6 +2291,7 @@ func _touch_vis() -> void:
 		btn_car.text += " · %d%%" % roundi(survival.fuel)
 	btn_talk.visible = ph and not menu_open and survival.available()
 	btn_book.visible = not menu_open
+	btn_wheel.visible = ph and not menu_open and on_foot
 	btn_attack.visible = ph and not menu_open and on_foot
 	nav_arrow.visible = minimap.visible and nav_has and not menu_open
 	joy.visible = ph and not menu_open
@@ -2310,6 +2353,9 @@ func _layout_ui() -> void:
 	btn_book.position = Vector2(vs.x - 88.0 - 16.0, vs.y - 88.0 - 40.0)
 	btn_car.position = Vector2(14.0, vs.y - 125.0 if ph else vs.y - 62.0)
 	btn_attack.position = Vector2(14.0, vs.y - 230.0)
+	btn_wheel.custom_minimum_size = Vector2(70, 70)
+	btn_wheel.size = Vector2(70, 70)
+	btn_wheel.position = Vector2(23.0, vs.y - 315.0)
 	btn_talk.position = Vector2(vs.x - 88.0 - 16.0, vs.y - 88.0 * 2.0 - 56.0)
 	if ph:
 		ui_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -2339,10 +2385,7 @@ func _layout_ui() -> void:
 		home.btn_menu.custom_minimum_size = Vector2(152, 64)
 		home.btn_menu.size = Vector2(152, 64)
 		home.btn_menu.position = Vector2(16, vs.y - 226.0)
-	if is_instance_valid(intro_layer):
-		var intro_panel: PanelContainer = intro_layer.get_child(0)
-		var intro_rows: VBoxContainer = intro_panel.get_child(0).get_child(0)
-		_position_intro(intro_panel, intro_rows)
+	_refresh_intro_layout()
 	nav_arrow.queue_redraw()
 	minimap.queue_redraw()
 
@@ -2831,6 +2874,9 @@ func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: floa
 		"museum", "arena":
 			wall = Color("#c2bbb0")
 			roof = Color("#8e928e")
+		"correios_calogeras":
+			wall = Color("#d1c6ae")
+			roof = Color("#7e7a71")
 		"civic":
 			wall = Color("#a4a59d")
 			roof = Color("#5c7378")
@@ -2872,6 +2918,14 @@ func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: floa
 					var offset := (float(post) / maxf(2.0, ceilf(length / 1.9)) - 0.5) * length
 					_face_c(st, middle + normal * 0.23 + span * offset + Vector3.UP * (level + 0.33),
 						Vector3.UP * 0.19, span * 0.035, Color("#806f73"))
+		elif site == "correios_calogeras":
+			var stone := wall.lightened(0.13)
+			var cornice := minf(height - 0.65, height * 0.78)
+			_face_c(st, middle + normal * 0.08 + Vector3.UP * cornice, Vector3.UP * 0.28, span * length * 0.49, stone)
+			for division in range(1, maxi(2, floori(length / 3.5))):
+				var offset := (float(division) / maxf(2.0, floorf(length / 3.5)) - 0.5) * length
+				_face_c(st, middle + normal * 0.09 + span * offset + Vector3.UP * (cornice * 0.49),
+					Vector3.UP * (cornice * 0.47), span * 0.13, stone)
 		elif site == "mercadao":
 			_face_c(st, middle + normal * 0.04 + Vector3.UP * 2.50, Vector3.UP * 0.42, span * length * 0.48, Color("#79918b"))
 			for bay in range(1, maxi(2, floori(length / 4.0))):

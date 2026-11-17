@@ -21,7 +21,9 @@ const ITEM_NAMES := {
 	"water": "Água", "food": "Conserva", "med": "Primeiros socorros",
 	"fuel": "Galão de combustível", "parts": "Peças", "bat": "Taco", "crowbar": "Pé de cabra",
 	"knife": "Faca", "pistol": "Pistola", "ammo": "Munição",
-	"jacket": "Jaqueta verde", "shirt": "Camiseta azul", "coat": "Casaco ocre"
+	"jacket": "Jaqueta verde", "shirt": "Camiseta azul", "coat": "Casaco ocre",
+	"cloth":"Retalho", "wood":"Madeira", "dirty_water":"Água turva", "bandage":"Bandagem",
+	"noise_maker":"Isca sonora", "manual":"Manual de oficina"
 }
 const WEAPONS := {
 	"fist": {"reach": 1.8, "damage": 14.0, "duration": 0.45, "impact": 0.14, "noise": 10.0},
@@ -38,8 +40,18 @@ const EQUIPMENT_ART := {
 	"pistol": preload("res://assets/equipamento/pistol.png"),
 	"ammo": preload("res://assets/equipamento/ammo.png"),
 }
-const CONSUMABLES := {"food": "fome", "water": "sede", "med": "saude"}
-const STORY_QUESTS := 12
+const CONSUMABLES := {"food": "fome", "water": "sede", "med": "saude", "bandage": "saude"}
+const SKILLS := {"care":"Primeiros socorros", "workshop":"Oficina", "field":"Sobrevivência"}
+const RECIPES := [
+	{"out":"bandage", "skill":"care", "level":0, "inputs":{"cloth":2}, "tool":"", "home":false},
+	{"out":"water", "skill":"field", "level":0, "inputs":{"dirty_water":1, "cloth":1}, "tool":"", "home":true},
+	{"out":"noise_maker", "skill":"field", "level":1, "inputs":{"parts":1, "cloth":1}, "tool":"", "home":false},
+	{"out":"bat", "skill":"workshop", "level":1, "inputs":{"wood":1, "cloth":1}, "tool":"knife", "home":false},
+	{"out":"med", "skill":"care", "level":2, "inputs":{"bandage":2, "water":1}, "tool":"", "home":true},
+	{"out":"crowbar", "skill":"workshop", "level":2, "inputs":{"parts":3}, "tool":"bat", "home":true},
+]
+const QUICK_ITEMS := ["fist", "knife", "bat", "crowbar", "pistol", "water", "food", "med", "bandage", "noise_maker"]
+const STORY_QUESTS := 16
 const QUESTS := [
 	{"place":"pague_menos_13", "item":"med", "title":"Primeiros socorros", "request":"Busque um kit na Pague Menos da Rua 13 de Maio.", "reward":"water", "story":"Lia tem gente ferida no Posto Barão. Bia passou por lá antes de seguir para a estação."},
 	{"place":"mercado", "item":"food", "title":"Rações para o abrigo", "request":"Busque uma conserva no Mercadão, Rua 7 de Setembro.", "reward":"med", "story":"Enquanto durarem as buscas, alguém precisa manter o abrigo abastecido."},
@@ -53,6 +65,10 @@ const QUESTS := [
 	{"place":"museu_dom_bosco", "item":"", "title":"Voz do lado leste", "request":"Confira o ponto de encontro no Museu das Culturas Dom Bosco.", "story":"A última coordenada do mapa aponta para o museu. A equipe deixou um recado na entrada.", "result":"Bia está viva. Ela voltou pelo Centro para buscar a lista de desaparecidos, que ficou nos Correios."},
 	{"place":"correios_calogeras", "item":"parts", "title":"A lista dos desaparecidos", "request":"Recupere o equipamento de transmissão nos Correios da Calógeras.", "reward":"food", "story":"A lista foi copiada para um transmissor portátil. Leve-o à Lia antes que a bateria acabe."},
 	{"place":"prefeitura", "item":"", "title":"A rede volta a falar", "request":"Confira o ponto de transmissão na Prefeitura.", "story":"Lia transmitiu os nomes. Falta confirmar se o ponto de retransmissão recebeu a mensagem de Bia.", "result":"Bia respondeu pelo rádio. A rede tem uma rota de volta e volta a publicar a lista ao anoitecer. Sua casa continua sendo o seu ponto de retorno."},
+	{"place":"casa_artesao", "item":"", "title":"Os nomes do mural", "request":"Confira o mural de recados da Casa do Artesão.", "story":"Bia voltou, mas o caderno dos desaparecidos tem uma página arrancada. Lia lembra de famílias que deixavam bilhetes com os artesãos.", "result":"As famílias se reuniam na Feira Central. Uma anotação pede madeira para marcar uma passagem segura."},
+	{"place":"feira_central", "item":"wood", "title":"A saída da Feira", "request":"Recupere madeira num depósito da Feira Central.", "reward":"bandage", "story":"Os voluntários querem sinalizar a saída lateral. A entrada principal virou um ponto de aglomeração dos infectados."},
+	{"place":"ary_coelho", "item":"", "title":"Debaixo do coreto", "request":"Procure a caixa de recados na Praça Ary Coelho.", "story":"O grupo deixou uma lista de quem saiu pela passagem da feira e para onde cada família foi.", "result":"A lista dá conta da maioria das famílias. Um envelope ficou separado para a Lia com os horários das rondas."},
+	{"place":"galeria_afonso", "item":"manual", "title":"Quem fica para o plantão", "request":"Busque o caderno de manutenção na Galeria Afonso Pena.", "reward":"water", "story":"A rede precisa de gente capaz de manter os equipamentos do plantão. O caderno pode salvar a próxima transmissão."},
 	{"place":"comper_centro", "item":"water", "title":"Água para a enfermaria", "request":"Busque água no Supermercado Comper do Centro.", "reward":"food", "story":"A enfermaria precisa repor água para quem chega depois da ronda."},
 	{"place":"camelódromo", "item":"parts", "title":"Ferragens para a ronda", "request":"Procure peças no Camelódromo de Campo Grande.", "reward":"water", "story":"Os carrinhos e rádios da ronda estão sendo remendados com ferragens recuperadas."},
 	{"place":"pague_menos_miraflores", "item":"med", "title":"Kit para o plantão", "request":"Recolha um kit na Pague Menos da Miraflores.", "reward":"food", "story":"O estoque do plantão da noite foi aberto para atender o último comboio."},
@@ -73,6 +89,7 @@ var game
 var needs := {"saude":100.0, "fome":92.0, "sede":89.0, "energia":100.0}
 var bag := {"water":1, "food":1, "bat":1}
 var chest: Dictionary = {}
+var skill_xp := {"care":0, "workshop":0, "field":0}
 var containers: Dictionary = {}
 var taken: Dictionary = {}
 var sites: Dictionary = {}
@@ -202,11 +219,12 @@ func tick(delta: float) -> void:
 		noises[i]["life"] -= delta
 		if noises[i]["life"] <= 0.0:
 			noises.remove_at(i)
-	population_timer -= delta
-	if population_timer <= 0.0:
-		population_timer = 2.8
-		_population(where)
-	_update_infected(where, delta, in_shelter)
+	if not game.alpha.live:
+		population_timer -= delta
+		if population_timer <= 0.0:
+			population_timer = 2.8
+			_population(where)
+		_update_infected(where, delta, in_shelter)
 	survivor_group.tick(where, delta)
 	_update_near()
 	pulse += delta
@@ -314,6 +332,8 @@ func _inventory_menu() -> void:
 	if equipped == "pistol":
 		equipped_name += " · Munição ×%d" % int(bag.get("ammo", 0))
 	_line("Na mão: " + equipped_name)
+	_button("Roda de itens", quick_wheel)
+	_button("Fabricação e habilidades", _craft_menu.bind(_inventory_menu))
 	_button("Diário de missões", _journal.bind(_inventory_menu))
 	if equipped != "fist":
 		_button("Guardar arma · Usar punhos", _equip.bind("fist"), "fist")
@@ -329,8 +349,10 @@ func _inventory_menu() -> void:
 		if count == 0 or WEAPONS.has(item):
 			continue
 		var caption := "%s ×%d" % [ITEM_NAMES[item], count]
-		if CONSUMABLES.has(item) or item == "fuel":
+		if CONSUMABLES.has(item) or item in ["fuel", "noise_maker"]:
 			_button("Usar " + caption, _use.bind(item), item)
+		elif item == "manual":
+			_button("Estudar " + caption, _study_manual)
 		elif CLOTHES.has(item):
 			var verb := "Vestida · " if item == outfit else "Vestir "
 			if item == outfit:
@@ -482,6 +504,14 @@ func _attack_target(reach: float) -> Dictionary:
 
 func _strike(item: String, stats: Dictionary) -> void:
 	var firearm := item == "pistol"
+	if game.alpha.live:
+		game.alpha.attack(item)
+		if firearm and bag.has("ammo"):
+			_remove_item("ammo")
+			if quest < QUESTS.size() and QUESTS[quest]["item"] == "ammo" and not bag.has("ammo"):
+				supply_found = false
+			save()
+		return
 	if firearm:
 		if int(bag.get("ammo", 0)) <= 0:
 			return
@@ -533,6 +563,8 @@ func _update_hand(delta: float) -> void:
 	if not hand.visible:
 		return
 	var texture: Texture2D = EQUIPMENT_ART.get(item, icons.get(item))
+	if texture == null and item == "bandage":
+		texture = icons.get("med")
 	hand.texture = texture
 	var face := action_face if acting else (-1.0 if game.walk_face == 0 else 1.0)
 	var pose := Vector2(9, 15)
@@ -543,7 +575,7 @@ func _update_hand(delta: float) -> void:
 	if CONSUMABLES.has(item) or item == "fuel":
 		var lift := sin(PI * clampf(elapsed / action_duration, 0.0, 1.0))
 		var use_at: Vector2 = {"water": Vector2(4, 28), "food": Vector2(5, 26),
-			"med": Vector2(2, 13), "fuel": Vector2(14, 8)}[item]
+			"med": Vector2(2, 13), "bandage": Vector2(2, 13), "fuel": Vector2(14, 8)}[item]
 		pose = pose.lerp(use_at, lift)
 		tilt = lift * (0.8 if item == "water" else -0.3)
 		body_shift.y = -lift * (2.0 if item == "med" else 1.0)
@@ -587,6 +619,8 @@ func _update_hand(delta: float) -> void:
 
 
 func make_noise(at: Vector2, radius: float) -> void:
+	if game.alpha.live:
+		game.alpha.noise(at)
 	noises.append({"pos":at, "radius":radius, "life":2.6})
 	if noises.size() > 12:
 		noises.pop_front()
@@ -733,7 +767,7 @@ func _line(content: String) -> Label:
 	return label
 
 
-func _button(caption: String, action: Callable, item := "") -> void:
+func _button(caption: String, action: Callable, item := "") -> Button:
 	var btn := Button.new()
 	btn.text = caption
 	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -743,6 +777,7 @@ func _button(caption: String, action: Callable, item := "") -> void:
 	btn.custom_minimum_size.y = 46
 	btn.pressed.connect(action)
 	body.add_child(btn)
+	return btn
 
 
 func _meter_icon(index: int) -> ImageTexture:
@@ -930,11 +965,11 @@ func _stash(p: Dictionary) -> Dictionary:
 	random.seed = int(hash(id)) + cycle * 223
 	var type := _kind(p)
 	var pool: Array = {
-		"pharmacy":["med","med","water","parts"],
-		"supermarket":["food","water","food","water","parts"],
-		"mall":["parts","crowbar","water","food","bat","fuel"],
-		"residence":["water","food","food","parts","med","jacket","shirt","coat"],
-		"other":["food","water","parts","fuel","bat","crowbar"]
+		"pharmacy":["med","med","water","parts","cloth","bandage"],
+		"supermarket":["food","water","food","water","parts","dirty_water"],
+		"mall":["parts","crowbar","water","food","bat","fuel","manual","wood"],
+		"residence":["water","food","cloth","parts","med","jacket","shirt","coat","dirty_water","wood"],
+		"other":["food","water","parts","fuel","bat","crowbar","cloth","wood","manual"]
 	}[type]
 	var stock := {}
 	var count := random.randi_range(0, 2)
@@ -1113,6 +1148,8 @@ func _journal(back: Callable) -> void:
 		if index == quest:
 			_line(task["story"])
 			_line(task["request"])
+		elif index < quest and task.has("result"):
+			_line(task["result"])
 	_button("Voltar", back)
 
 
@@ -1124,6 +1161,7 @@ func _personal_home_menu() -> void:
 	_button("Baú pessoal · %d/%d" % [_item_count(chest), CHEST_CAPACITY], _chest_menu.bind(true))
 	_button("Descansar", _home_rest)
 	_button("Mobiliar", _furniture_menu)
+	_button("Usar a bancada", _craft_menu.bind(_personal_home_menu))
 	_button("Diário de missões", _journal.bind(_personal_home_menu))
 	_button("Sair de casa", game._exit_home)
 
@@ -1209,18 +1247,159 @@ func _use(item: String) -> void:
 			_notify("Chegue perto do carro em uso para abastecer.")
 			return
 		fuel = minf(100, fuel + 35.0)
+	elif item == "noise_maker":
+		var right: Vector3 = game.cam.global_basis.x
+		var toward := Vector2(right.x, right.z) * (-1.0 if game.walk_face == 0 else 1.0)
+		make_noise(game.walk_pos + toward * 16.0, 56.0)
+		_gain_skill("field", 1)
 	elif CONSUMABLES.has(item):
 		var meter: String = CONSUMABLES[item]
-		needs[meter] = minf(100, float(needs[meter]) + (35.0 if item == "med" else 42.0))
+		var restored := 42.0
+		if meter == "saude":
+			restored = (35.0 if item == "med" else 18.0) + 3.0 * _skill_level("care")
+			_gain_skill("care", 1)
+		needs[meter] = minf(100, float(needs[meter]) + restored)
 	else:
 		return
 	_remove_item(item)
 	if quest < QUESTS.size() and item == QUESTS[quest]["item"] and not bag.has(item) and not chest.has(item):
 		supply_found = false
 	close()
-	_start_action(item, 0.85)
+	if item != "noise_maker":
+		_start_action(item, 0.85)
 	_update_hud()
 	save()
+
+
+func _skill_level(skill: String) -> int:
+	return mini(5, floori(float(skill_xp[skill]) / 3.0))
+
+
+func _gain_skill(skill: String, amount: int) -> void:
+	var before := _skill_level(skill)
+	skill_xp[skill] += amount
+	if _skill_level(skill) > before:
+		_notify("%s subiu para o nível %d." % [SKILLS[skill], _skill_level(skill)])
+
+
+func _study_manual() -> void:
+	if not bag.has("manual"):
+		return
+	if supply_found and quest < QUESTS.size() and QUESTS[quest]["item"] == "manual" and int(bag["manual"]) == 1:
+		_notify("Reserve o manual da missão para entregar no Posto Barão.")
+		return
+	_remove_item("manual")
+	_gain_skill("workshop", 3)
+	save()
+	_craft_menu(_inventory_menu)
+
+
+func _craft_menu(back: Callable) -> void:
+	_open_panel("craft", "Fabricação e habilidades")
+	for skill in SKILLS:
+		_line("%s · nível %d · %d XP" % [SKILLS[skill], _skill_level(skill), int(skill_xp[skill])])
+	for recipe in RECIPES:
+		var materials := PackedStringArray()
+		for item in recipe["inputs"]:
+			materials.append("%s %d/%d" % [ITEM_NAMES[item], int(bag.get(item, 0)), int(recipe["inputs"][item])])
+		var where := " · Bancada de casa" if recipe["home"] else ""
+		var tool := " · Ferramenta: " + str(ITEM_NAMES[recipe["tool"]]) if not str(recipe["tool"]).is_empty() else ""
+		_line("%s · %s nível %d%s%s" % [" + ".join(materials), SKILLS[recipe["skill"]], recipe["level"], where, tool])
+		var button := _button("Fabricar " + str(ITEM_NAMES[recipe["out"]]), _craft.bind(recipe, back))
+		button.disabled = not _can_craft(recipe)
+	_button("Voltar", back)
+
+
+func _can_craft(recipe: Dictionary) -> bool:
+	if down or not game.on_foot or (recipe["home"] and not game.in_home):
+		return false
+	if _skill_level(recipe["skill"]) < int(recipe["level"]):
+		return false
+	var tool: String = recipe["tool"]
+	if not tool.is_empty() and not bag.has(tool):
+		return false
+	for item in recipe["inputs"]:
+		if int(bag.get(item, 0)) < int(recipe["inputs"][item]):
+			return false
+	if supply_found and quest < QUESTS.size():
+		var reserved: String = QUESTS[quest]["item"]
+		if int(recipe["inputs"].get(reserved, 0)) > 0 and int(bag[reserved]) <= int(recipe["inputs"][reserved]):
+			return false
+	return true
+
+
+func _craft(recipe: Dictionary, back: Callable) -> void:
+	if not _can_craft(recipe):
+		return
+	for item in recipe["inputs"]:
+		for count in int(recipe["inputs"][item]):
+			_remove_item(item)
+	var result: String = recipe["out"]
+	bag[result] = int(bag.get(result, 0)) + 1
+	_gain_skill(recipe["skill"], 2)
+	save()
+	_craft_menu(back)
+
+
+func quick_wheel() -> void:
+	if down or action_time > 0.0 or game.in_home:
+		return
+	if menu_kind == "wheel":
+		close()
+		return
+	_wheel_page(0)
+
+
+func _wheel_page(page: int) -> void:
+	_open_panel("wheel", "Roda de itens")
+	var wheel := Control.new()
+	wheel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	wheel.custom_minimum_size = Vector2(262, 223)
+	body.add_child(wheel)
+	var choices := PackedStringArray()
+	for item in QUICK_ITEMS:
+		if item == "fist" or bag.has(item):
+			choices.append(item)
+	var pages := ceili(choices.size() / 8.0)
+	var visible_items := choices.slice(page * 8, page * 8 + 8)
+	var center := Vector2(131, 108)
+	var held := Label.new()
+	held.text = "NA MÃO\n" + ("Punhos" if equipped == "fist" else str(ITEM_NAMES[equipped]))
+	held.position = center - Vector2(47, 19)
+	held.size = Vector2(94, 39)
+	held.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	held.add_theme_font_size_override("font_size", 12)
+	wheel.add_child(held)
+	if pages > 1:
+		var more := Button.new()
+		more.text = "Mais itens"
+		more.position = center + Vector2(-45, 25)
+		more.size = Vector2(90, 30)
+		more.pressed.connect(_wheel_page.bind((page + 1) % pages))
+		wheel.add_child(more)
+	for index in visible_items.size():
+		var item := visible_items[index]
+		var direction := Vector2.from_angle(-PI * 0.5 + TAU * index / visible_items.size())
+		var slot := Button.new()
+		slot.position = center + Vector2(direction.x * 95, direction.y * 78) - Vector2(32, 25)
+		slot.size = Vector2(64, 50)
+		slot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		slot.add_theme_font_size_override("font_size", 12)
+		var short_names := {"fist":"Punhos", "med":"Kit médico", "noise_maker":"Isca", "bandage":"Curativo", "crowbar":"Alavanca"}
+		slot.text = str(short_names.get(item, ITEM_NAMES.get(item, "")))
+		slot.pressed.connect(_quick_select.bind(item))
+		wheel.add_child(slot)
+
+
+func _quick_select(item: String) -> void:
+	if menu_kind != "wheel":
+		return
+	if WEAPONS.has(item) and (item == "fist" or bag.has(item)):
+		equipped = item
+		save()
+		close()
+	elif bag.has(item):
+		_use(item)
 
 
 func _remove_item(item: String) -> void:
@@ -1406,29 +1585,66 @@ func _population(here: Vector2) -> void:
 		var distance := here.distance_to(start)
 		if distance < 25.0 or distance > 82.0 or start.distance_to(safe) < 13.0 or not _valid_position(start):
 			continue
-		var sprite: Sprite3D = game._person_sprite(tries % 6)
-		var frame_size := Vector2i.ZERO
-		if not zombie_atlases.is_empty():
-			var variant := randi() % zombie_atlases.size()
-			frame_size = zombie_frame_sizes[variant]
-			sprite.texture = zombie_atlases[variant]
-			sprite.region_rect = Rect2(0, 0, frame_size.x, frame_size.y)
-			sprite.pixel_size = 2.55 / float(frame_size.y)
-			sprite.offset.y = float(frame_size.y) * 0.5 - 1.0
-		else:
-			sprite.modulate = Color("#a3c292")
-		var voice := AudioStreamPlayer3D.new()
-		voice.max_distance = 38.0
-		voice.unit_size = 7.0
-		voice.volume_db = -14.0
-		sprite.add_child(voice)
-		sprite.position = Vector3(start.x, 0.04, start.y)
-		var tangent: Vector2 = lane[1]
-		infected.append({"node":sprite, "pos":start, "home":start, "patrol":start+tangent*8.0,
-			"target":start, "state":"patrol", "timer":0.0, "hp":INFECTED_HEALTH, "seen":0.0, "bite":0.0,
-			"retry":0.0, "path":PackedVector2Array(), "walk":randf() * TAU, "speed":randf_range(1.85, 2.7),
-			"frame_size":frame_size, "voice":voice, "pitch":randf_range(0.83, 1.16), "voice_in":randf_range(1.0, 5.0)})
+		infected.append(_spawn_infected(start, lane[1]))
 		break
+
+
+func _spawn_infected(start: Vector2, tangent: Vector2) -> Dictionary:
+	var sprite: Sprite3D = game._person_sprite(randi() % 6)
+	var frame_size := Vector2i.ZERO
+	if not zombie_atlases.is_empty():
+		var variant := randi() % zombie_atlases.size()
+		frame_size = zombie_frame_sizes[variant]
+		sprite.texture = zombie_atlases[variant]
+		sprite.region_rect = Rect2(0, 0, frame_size.x, frame_size.y)
+		sprite.pixel_size = 2.55 / float(frame_size.y)
+		sprite.offset.y = float(frame_size.y) * 0.5 - 1.0
+	else:
+		sprite.modulate = Color("#a3c292")
+	var voice := AudioStreamPlayer3D.new()
+	voice.max_distance = 38.0
+	voice.unit_size = 7.0
+	voice.volume_db = -14.0
+	sprite.add_child(voice)
+	sprite.position = Vector3(start.x, 0.04, start.y)
+	return {"node":sprite, "pos":start, "home":start, "patrol":start+tangent*8.0,
+		"target":start, "state":"patrol", "timer":0.0, "hp":INFECTED_HEALTH, "seen":0.0, "bite":0.0,
+		"retry":0.0, "path":PackedVector2Array(), "walk":randf() * TAU, "speed":randf_range(1.85, 2.7),
+		"frame_size":frame_size, "voice":voice, "pitch":randf_range(0.83, 1.16), "voice_in":randf_range(1.0, 5.0)}
+
+
+func _clear_infected() -> void:
+	for z in infected:
+		_clear_hit_feedback(z)
+		z["node"].queue_free()
+	infected.clear()
+
+
+func _sync_online_infected(list: Array, existing: Dictionary) -> void:
+	var present := {}
+	for remote in list:
+		var id: String = remote["id"]
+		present[id] = true
+		var spot := Vector2(remote["x"], remote["y"])
+		if not existing.has(id):
+			var fresh := _spawn_infected(spot, Vector2.RIGHT)
+			existing[id] = fresh
+			infected.append(fresh)
+		var z: Dictionary = existing[id]
+		var hp := float(remote["hp"])
+		if hp < float(z["hp"]):
+			_damage_zombie(z, float(z["hp"]) - hp)
+		var previous: Vector2 = z["pos"]
+		z["pos"] = spot
+		if hp > 0.0:
+			_infected_pose(z, spot, spot - previous, 0.12, false)
+	for id in existing.keys():
+		if not present.has(id):
+			var z: Dictionary = existing[id]
+			_clear_hit_feedback(z)
+			z["node"].queue_free()
+			infected.erase(z)
+			existing.erase(id)
 
 
 func _update_infected(here: Vector2, delta: float, protected: bool) -> void:
@@ -1601,6 +1817,8 @@ func _valid_position(at: Vector2) -> bool:
 
 
 func _revive() -> void:
+	if game.alpha.live:
+		game.alpha.revive()
 	_reset_action()
 	equipped = "bat"
 	outfit = ""
@@ -1649,7 +1867,7 @@ func save() -> void:
 	var player: Vector2 = game._actor_pos()
 	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"on_foot":game.on_foot,"in_home":game.in_home and game.intro_state == 0,"areas":containers,"bag":bag,"equipped":equipped,"outfit":outfit,"dirty_hands":dirty_hands,"chest":chest,"needs":needs,"taken":taken,"parked_heading_v2":true,"vehicle":active_vehicle,
+		f.store_string(JSON.stringify({"on_foot":game.on_foot,"in_home":game.in_home and game.intro_state == 0,"areas":containers,"bag":bag,"skills":skill_xp,"equipped":equipped,"outfit":outfit,"dirty_hands":dirty_hands,"chest":chest,"needs":needs,"taken":taken,"parked_heading_v2":true,"vehicle":active_vehicle,
 			"fuel":fuel,"quest":quest,"found":supply_found,"reputation":reputation,"next":next_contract,"x":player.x,"y":player.y,
 			"cx":game.car_pos.x,"cy":game.car_pos.y,"heading":game.car_heading}))
 
@@ -1673,6 +1891,7 @@ func _load_progress() -> void:
 					_stock_new_equipment(id, entry["items"])
 	_upgrade_loot_delays()
 	bag = data.get("bag", bag)
+	skill_xp.merge(data.get("skills", {}), true)
 	var previous := "crowbar" if bag.has("crowbar") else ("bat" if bag.has("bat") else "fist")
 	equipped = str(data.get("equipped", previous))
 	if not WEAPONS.has(equipped) or (equipped != "fist" and not bag.has(equipped)):

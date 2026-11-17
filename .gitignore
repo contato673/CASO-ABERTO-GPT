@@ -5,3 +5,4 @@ __pycache__/
 *.tmp
 /captura.png.import
 /assets/survival_local/
+/server/__pycache__/
