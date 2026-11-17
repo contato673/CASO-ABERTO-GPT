@@ -1,5 +1,8 @@
 extends RefCounted
 
+const PEOPLE_ART := preload("res://scripts/people_art.gd")
+const MODEL_BY_PROFILE := [1,0,1,4,1,0,1,0,2,5,3,2,4]
+
 const HOSTILE_SITES := ["correios_calogeras", "museu"]
 const PEOPLE := [
 	["central", "Lia", "Socorrista", "Trabalhava numa ambulância. Agora faço a triagem de quem consegue chegar ao Posto Barão.", "Se ouvir gritos perto da Barão, contorne pela calçada oposta. O pátio do abrigo é seguro."],
@@ -12,6 +15,9 @@ const PEOPLE := [
 	["museu_dom_bosco", "Joel", "Técnico de manutenção", "Conheço as passagens de serviço daqui. À noite me escondo e saio quando a rua esvazia.", "Procure água nas residências. Não vale quebrar todo vidro só por curiosidade."],
 	["correios_calogeras", "Breno", "Ex-segurança", "Controlava a portaria de um depósito. Depois do apagão passou a tomar suprimentos de quem cruza a Calógeras.", ""],
 	["museu", "Marta", "Ex-transportadora", "Perdeu a carga e o carro na estação. Agora defende o que conseguiu reunir perto dos trilhos.", ""],
+	["prefeitura", "Sônia", "Guarda municipal", "A equipe se dividiu quando o rádio apagou. Volto à Prefeitura para procurar o livro de ocorrências.", "Se perder a rota, use as avenidas largas para sair do Centro."],
+	["morada_bais", "Hélio", "Agente de trânsito", "Antes do apagão eu orientava o trânsito na Calógeras. Faço a ronda para ver quais acessos ainda estão livres.", "Um carro encostado pode precisar de peças, mesmo com combustível."],
+	["hotel_gaspar", "Vicente", "Agente de resgate", "Ajudei a tirar hóspedes do Gaspar. Agora confiro se alguém voltou à recepção à procura de abrigo.", "Mantenha a saída livre antes de subir aos quartos."],
 ]
 
 var life: Node
@@ -41,7 +47,11 @@ func setup(survival: Node, city: Node) -> void:
 		var objective := _pick_point(home, tangent, away, 13.0)
 		if objective == home:
 			objective = _pick_point(home, -tangent, -away, 13.0)
-		var sprite: Sprite3D = game._person_sprite((i + 1) % 7)
+		var sprite: Sprite3D = game._person_sprite(0)
+		sprite.texture = PEOPLE_ART.MODELS[MODEL_BY_PROFILE[i]]
+		sprite.region_rect = Rect2(Vector2.ZERO,PEOPLE_ART.FRAME)
+		sprite.pixel_size = .042
+		sprite.offset.y = 31
 		sprite.hide()
 		var title := Label3D.new()
 		title.text = profile[1]
@@ -54,7 +64,7 @@ func setup(survival: Node, city: Node) -> void:
 		sprite.add_child(title)
 		people.append({"id": "person_" + str(profile[0]), "name": profile[1],
 			"job": profile[2], "bio": profile[3], "advice": profile[4], "home": home,
-			"goal": objective, "pos": home, "node": sprite, "title": title, "skin": (i + 1) % 7,
+			"goal": objective, "pos": home, "node": sprite, "title": title,
 			"state": "patrol", "target": objective, "walk": 0.0, "face": 1,
 			"phase": i % 3, "swap_at": 4.0 + i, "calm": 0.0, "route": PackedVector2Array(),
 			"last_alarm": -20.0, "context": "survivor", "hostile": HOSTILE_SITES.has(profile[0]),
@@ -243,10 +253,13 @@ func _move(person: Dictionary, sprite: Sprite3D, at: Vector2, delta: float) -> v
 	var step := next - at
 	var frame := 0
 	if not step.is_zero_approx():
-		person["walk"] += delta * (11.0 if rushing else 6.0)
-		frame = int(person["walk"]) % 4
+		person["walk"] += delta * (17.0 if rushing else 10.0)
+		frame = 1 + int(person["walk"]) % PEOPLE_ART.WALK_FRAMES
 		var right: Vector3 = game.cam.global_basis.x
-		person["face"] = 0 if step.dot(Vector2(right.x, right.z)) < 0.0 else 1
+		var up: Vector3 = game.cam.global_basis.y
+		var toward_left := step.dot(Vector2(right.x,right.z)) < 0.0
+		var moving_away := step.dot(Vector2(up.x,up.z)) > .015 * step.length()
+		person["face"] = (2 if moving_away else 0) + (0 if toward_left else 1)
 	person["pos"] = next
 	sprite.position = Vector3(next.x, 0.04, next.y)
-	sprite.region_rect = Rect2(frame * 32, (person["skin"] * 2 + person["face"]) * 40, 32, 40)
+	sprite.region_rect = Rect2(Vector2(frame,person["face"])*PEOPLE_ART.FRAME,PEOPLE_ART.FRAME)

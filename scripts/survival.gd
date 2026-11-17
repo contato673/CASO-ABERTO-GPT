@@ -456,6 +456,16 @@ func _equip(item: String) -> void:
 
 
 func _apply_outfit() -> void:
+	var model: int = game.avatar_model()
+	if model < game.PEOPLE_ART.MODELS.size():
+		var home: Node3D = game.home
+		var clothing: Color = {"jacket":Color("#68965a"),"shirt":Color("#3b77b3"),"coat":Color("#d8964c")}.get(
+			outfit,home.SHIRT[int(home.cfg["camisa"])])
+		game.walker.texture = game.PEOPLE_ART.player_atlas(
+			model,clothing,home.SKIN[int(home.cfg["pele"])],home.PANTS[int(home.cfg["calca"])])
+		game.walker.pixel_size = game.CHAR_SCALE * float(home.HEIGHTS[int(home.cfg["altura"])])
+		game.walker_outline.pixel_size = game.walker.pixel_size
+		return
 	var texture: Texture2D = CLOTHES.get(outfit, game.PEDESTRIANS)
 	game.walker.texture = game.survivor_texture(texture, outfit.is_empty())
 
@@ -673,7 +683,11 @@ func _update_hand(delta: float, actor: Sprite3D = null, resting := false) -> voi
 		return
 	hand.texture = texture
 	var face := action_face if acting else _sprite_face(actor)
-	var step := 0.0 if acting else sin(actor.region_rect.position.x / 32.0 * PI * .5)
+	var frame := actor.region_rect.position.x / 32.0
+	var custom_model: bool = game.avatar_model() < game.PEOPLE_ART.MODELS.size()
+	var step := 0.0
+	if not acting and frame > 0:
+		step = sin((frame-1.0)*TAU/7.0) if custom_model else sin(frame*PI*.5)
 	var pose := Vector2(11 + step * 1.1, 13 + step * 1.35)
 	var tilt := .16 if item == "bat" else -.16
 	var body_shift := Vector2.ZERO
@@ -726,7 +740,12 @@ func _update_hand(delta: float, actor: Sprite3D = null, resting := false) -> voi
 		muzzle_flash.pixel_size = .11 * model_scale
 		muzzle_flash.show()
 
-	var shoulder := Vector2((6 + body_shift.x)*face,19 + body_shift.y)*unit
+	if custom_model:
+		grip.x -= face * 1.5 * unit
+		hand.global_position -= camera.x * face * 1.5 * unit
+		if shot_flash:
+			muzzle_flash.global_position -= camera.x * face * 1.5 * unit
+	var shoulder := Vector2(((4.0 if custom_model else 6.0) + body_shift.x)*face,19 + body_shift.y)*unit
 	var elbow := shoulder.lerp(grip,.52)
 	elbow.y -= unit * (1.8 if acting else 1.05)
 	var fabric: Color = {"jacket":Color("#8caa68"),"coat":Color("#dba35c")}.get(outfit,Color("#79a2d9"))
@@ -1234,9 +1253,37 @@ func _personal_home_menu() -> void:
 	_button("Baú pessoal · %d/%d" % [_item_count(chest), CHEST_CAPACITY], _chest_menu.bind(true))
 	_button("Descansar", _home_rest)
 	_button("Mobiliar", _furniture_menu)
+	_button("Aparência do sobrevivente",_appearance_menu)
 	_button("Usar a bancada", _craft_menu.bind(_personal_home_menu))
 	_button("Diário de missões", _journal.bind(_personal_home_menu))
 	_button("Sair de casa", game._exit_home)
+
+
+func _appearance_menu() -> void:
+	if not _at_shelter():
+		return
+	_open_panel("appearance","Aparência do sobrevivente")
+	var picker := OptionButton.new()
+	for label in game.PEOPLE_ART.NAMES:
+		picker.add_item(label)
+	picker.select(game.avatar_model())
+	picker.item_selected.connect(func(index: int):
+		game.home.cfg["avatar_model"] = index
+		game.home._save()
+		_apply_outfit())
+	body.add_child(picker)
+	for entry in [["pele","Tom de pele",5],["camisa","Camisa",6],["calca","Calça",4],["altura","Altura",3]]:
+		_button("%s · %d/%d" % [entry[1],int(game.home.cfg[entry[0]])+1,entry[2]],
+			_cycle_appearance.bind(entry[0],entry[2]))
+	_button("Voltar",_personal_home_menu)
+
+
+func _cycle_appearance(key: String, count: int) -> void:
+	var config: Dictionary = game.home.cfg
+	config[key] = posmod(int(config[key]) + 1,count)
+	game.home._save()
+	_apply_outfit()
+	_appearance_menu()
 
 
 func _home_rest() -> void:

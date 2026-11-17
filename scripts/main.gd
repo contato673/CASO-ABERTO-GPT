@@ -17,6 +17,7 @@ const TRAFFIC_COUNT := 44
 const TREE_MAX := 4400
 const BLOCK_MAX := 7500
 const CHAR_SCALE := 0.072
+const PEOPLE_ART := preload("res://scripts/people_art.gd")
 const PEDESTRIANS := preload("res://assets/cidade/pedestres.png")
 const PED_RANGE := 320.0
 const PED_FLEE_DIST := 6.0
@@ -1424,8 +1425,8 @@ func _walk(delta: float) -> void:
 	walker.position = Vector3(walk_pos.x, 0.04, walk_pos.y)
 	if absf(screen.x) > 0.08:
 		walk_face = 0 if screen.x < 0.0 else 1
-	walk_cycle += delta * 7.0
-	var frame := int(walk_cycle) % 4 if screen.length_squared() > 0.03 else 0
+	walk_cycle += delta * (10.0 if avatar_model() < PEOPLE_ART.MODELS.size() else 7.0)
+	var frame := 0 if screen.length_squared() <= .03 else avatar_walk_frame(walk_cycle)
 	walker.region_rect = Rect2(frame * 32, (8 + walk_face) * 40, 32, 40)
 
 
@@ -2207,6 +2208,15 @@ func _intro_begin() -> void:
 	origin_choice.select(clampi(int(home.cfg.get("survival_background", 0)), 0, BACKGROUNDS.size() - 1))
 	origin_choice.item_selected.connect(func(index: int): home.cfg["survival_background"] = index)
 	vb.add_child(origin_choice)
+	var model := OptionButton.new()
+	model.custom_minimum_size.y = 42
+	for name in PEOPLE_ART.NAMES:
+		model.add_item(name)
+	model.select(avatar_model())
+	model.item_selected.connect(func(index: int):
+		home.cfg["avatar_model"] = index
+		_intro_refresh())
+	vb.add_child(model)
 	for r in home.CAT_ROWS:
 		var key := str(r[0])
 		var count := int(r[2])
@@ -2245,6 +2255,7 @@ func _intro_refresh() -> void:
 	for k in intro_lbls.keys():
 		var src: Label = home.row_labels[k]["label"]
 		(intro_lbls[k] as Label).text = src.text
+		intro_lbls[k].get_parent().visible = avatar_model() == PEOPLE_ART.MODELS.size() or k in ["pele","altura","camisa","calca"]
 
 
 func _intro_story() -> void:
@@ -3724,6 +3735,16 @@ func _place_personal_home() -> void:
 		pois.append(chosen)
 		var entry: Vector2 = chosen["npc_pos"]
 		_register_sign("Sua casa", Vector3(entry.x, 3.1, entry.y))
+
+
+func avatar_model() -> int:
+	return clampi(int(home.cfg.get("avatar_model",PEOPLE_ART.MODELS.size())),0,PEOPLE_ART.MODELS.size())
+
+
+func avatar_walk_frame(cycle: float) -> int:
+	if avatar_model() < PEOPLE_ART.MODELS.size():
+		return 1 + int(cycle) % PEOPLE_ART.WALK_FRAMES
+	return int(cycle) % 4
 
 
 func survivor_texture(texture: Texture2D, use_initial_shirt: bool) -> Texture2D:

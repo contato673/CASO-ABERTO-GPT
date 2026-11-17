@@ -588,10 +588,10 @@ func _pose(action: String, delta: float) -> void:
 	if action != anim_key:
 		anim_key = action
 		phase = 0.0
-	phase += delta * (12.0 if action == "running" else 8.0)
+	phase += delta * (14.0 if action == "running" else 10.0)
 	var row := 320 if facing in [0,1,2,3] else 360
 	var source: Texture2D = game.walker.texture
-	var frame := int(phase)%4 if action in ["walk","running"] else 0
+	var frame: int = game.avatar_walk_frame(phase) if action in ["walk","running"] else 0
 	actor.position = _v(pos)
 	actor.region_enabled = posture != "seat"
 	actor.texture = source
@@ -831,7 +831,7 @@ func update_home_avatar(delta: float) -> void:
 	home_pawn.show()
 	home_pawn.texture = game.walker.texture
 	home_phase += delta * 8.0
-	var frame := int(home_phase)%4 if movement.length_squared() > .000004 else 0
+	var frame: int = game.avatar_walk_frame(home_phase) if movement.length_squared() > .000004 else 0
 	var row := 320 if home_facing in [0,1,2,3] else 360
 	home_pawn.region_rect = Rect2(frame*FRAME.x,row,FRAME.x,FRAME.y)
 	home_pawn.position = _v(current)
