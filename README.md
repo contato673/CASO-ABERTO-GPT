@@ -15,7 +15,9 @@ Você começa a pé no abrigo da Rua Barão do Rio Branco. A primeira missão pe
 | I ou ícone da mochila | Ver suprimentos e usar itens |
 | Esc ou Fechar | Fechar a janela |
 
-Saúde, fome, sede e energia afetam recuperação e movimento. A mochila tem 18 espaços. O saque varia por categoria de construção e leva aproximadamente 7 a 20 minutos para voltar depois de esvaziado. Os carros consomem combustível. Estacione e chegue perto do carro em uso para abastecer. O motor e a quebra de vidro podem chamar infectados.
+Saúde, fome, sede e energia afetam recuperação e movimento. A mochila tem 18 espaços. O saque varia por categoria de construção e volta entre 2 e 6 horas reais depois que o estoque é esvaziado. A contagem continua com o jogo fechado. Os carros consomem combustível. Estacione e chegue perto do carro em uso para abastecer. O motor e a quebra de vidro podem chamar infectados.
+
+No Posto Barão, abra **Baú pessoal** a pé para guardar ou retirar até 60 itens. O conteúdo do baú é salvo no dispositivo e permanece após a derrota do personagem.
 
 Há três entregas para o abrigo. Depois da sequência, novos contratos ficam disponíveis após 20 minutos. Mochila, necessidades, estoque, carros e reputação são salvos no dispositivo. A rede do abrigo é uma progressão local para um jogador.
 

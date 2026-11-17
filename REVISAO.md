@@ -8,7 +8,7 @@ O mapa, o traçado viário e os 26 locais reais cadastrados foram reaproveitados
 - O saque fica na interface de cada prédio. Farmácias, mercados e centros comerciais têm reservas diferentes. Há locais vazios e portas trancadas.
 - Vidros quebrados e carros em movimento produzem ruído. Os infectados podem patrulhar, investigar o som, perseguir por visão, buscar o último ponto conhecido e morder. Se encontram uma barreira, tentam usar a malha viária. O pátio do abrigo é seguro.
 - Os carros ficam estacionados. Roubar, dirigir, sair e voltar ao veículo funcionam com combustível persistente. Há um carro a cerca de 22 m do abrigo inicial.
-- O relógio real controla a reposição de suprimentos de 7 a 20 minutos e os contratos repetíveis. A progressão e o inventário pertencem ao perfil local.
+- O relógio real controla a reposição de suprimentos de 2 a 6 horas e os contratos repetíveis. A progressão, a mochila e o baú de 60 itens do Posto Barão pertencem ao perfil local.
 
 ## Verificação
 

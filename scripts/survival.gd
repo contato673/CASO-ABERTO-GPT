@@ -3,6 +3,9 @@ extends Node
 const SAVE := "user://campo_grande_survival_v1.json"
 const ART := "res://assets/survival_local/"
 const CAPACITY := 18
+const CHEST_CAPACITY := 60
+const LOOT_MIN_SECONDS := 2 * 3600
+const LOOT_MAX_SECONDS := 6 * 3600
 const ITEM_NAMES := {
 	"water": "Água", "food": "Conserva", "med": "Primeiros socorros",
 	"fuel": "Galão de combustível", "parts": "Peças", "bat": "Taco", "crowbar": "Pé de cabra"
@@ -18,6 +21,7 @@ const COLORS := [Color("#be665e"), Color("#c49d56"), Color("#69a3b2"), Color("#a
 var game
 var needs := {"saude":100.0, "fome":92.0, "sede":89.0, "energia":100.0}
 var bag := {"water":1, "food":1, "bat":1}
+var chest: Dictionary = {}
 var containers: Dictionary = {}
 var taken: Dictionary = {}
 var sites: Dictionary = {}
@@ -39,6 +43,7 @@ var hud: GridContainer
 var meter_labels: Array[Label] = []
 var bars: Array[ProgressBar] = []
 var pulse := 0.0
+var restock_label: Label
 var save_timer := 0.0
 var population_timer := 0.0
 var swing := 0.0
@@ -108,6 +113,7 @@ func tick(delta: float) -> void:
 	if pulse > 0.15:
 		pulse = 0.0
 		_update_hud()
+		_update_restock_countdown()
 	save_timer += delta
 	if save_timer > 5.0:
 		save_timer = 0.0
@@ -139,7 +145,11 @@ func objective_text() -> String:
 		return "Rede do abrigo · reputação %d\nPróximo contrato em %s." % [reputation, _duration(next_contract - _now())]
 	var task: Dictionary = QUESTS[quest]
 	if supply_found:
-		return "%s\nLeve %s ao abrigo da Rua Barão do Rio Branco." % [task["title"], str(ITEM_NAMES[task["item"]]).to_lower()]
+		var item: String = task["item"]
+		var name := str(ITEM_NAMES[item]).to_lower()
+		if not bag.has(item) and chest.has(item):
+			return "%s\nRetire %s do baú para fazer a entrega." % [task["title"], name]
+		return "%s\nLeve %s ao abrigo da Rua Barão do Rio Branco." % [task["title"], name]
 	return "%s\n%s" % [task["title"], task["request"]]
 
 
@@ -388,6 +398,7 @@ func _build_hud() -> void:
 
 func _open_panel(kind: String, title: String) -> void:
 	menu_kind = kind
+	restock_label = null
 	game.menu_open = true
 	game.joy_vec = Vector2.ZERO
 	game.joy_active = false
@@ -409,12 +420,13 @@ func _position_panel() -> void:
 	panel.position = (viewport - panel.size) * 0.5
 
 
-func _line(content: String) -> void:
+func _line(content: String) -> Label:
 	var label := Label.new()
 	label.text = content
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.add_theme_font_size_override("font_size", 17)
 	body.add_child(label)
+	return label
 
 
 func _button(caption: String, action: Callable, item := "") -> void:
@@ -458,10 +470,21 @@ func _loot_menu() -> void:
 		return
 	var loot: Dictionary = stash["items"]
 	if loot.is_empty():
-		_line("Sem suprimentos. Nova busca em %s." % _duration(float(stash["ready_at"]) - _now()))
+		restock_label = _line("")
+		_update_restock_countdown()
 		return
 	for item in loot:
 		_button("Pegar %s ×%d" % [ITEM_NAMES[item], loot[item]], _take.bind(id, item), item)
+
+
+func _update_restock_countdown() -> void:
+	if menu_kind != "loot" or restock_label == null:
+		return
+	var remaining := float(containers[str(opened["id"])]["ready_at"]) - _now()
+	if remaining <= 0.0:
+		_loot_menu()
+		return
+	restock_label.text = "Sem suprimentos. Nova busca em %s." % _duration(remaining)
 
 
 func _break_window() -> void:
@@ -522,7 +545,7 @@ func _stash(p: Dictionary) -> Dictionary:
 	for task in QUESTS:
 		if id == task["place"] and (quest < QUESTS.size() and id == QUESTS[quest]["place"]):
 			stock[task["item"]] = maxi(1, int(stock.get(task["item"], 0)))
-	var delay := random.randi_range(420, 1180)
+	var delay := random.randi_range(LOOT_MIN_SECONDS, LOOT_MAX_SECONDS)
 	var lock := id == "pague_menos_13" or id == "patio_central" or random.randf() < (0.55 if type != "other" else 0.36)
 	var entry := {"items":stock, "unlocked":not lock, "delay":delay, "cycle":cycle, "ready_at":(_now() + delay if stock.is_empty() else 0.0)}
 	containers[id] = entry
@@ -554,6 +577,61 @@ func _shelter_menu() -> void:
 	else:
 		_line(objective_text())
 	_button("Descansar", _rest)
+	_button("Baú pessoal · %d/%d" % [_item_count(chest), CHEST_CAPACITY], _chest_menu.bind(true))
+
+
+func _chest_menu(deposit: bool) -> void:
+	if not _at_shelter():
+		return
+	_open_panel("chest", "Baú pessoal · %d/%d" % [_item_count(chest), CHEST_CAPACITY])
+	_line("Mochila · %d/%d" % [_bag_count(), CAPACITY])
+	var tabs := HBoxContainer.new()
+	body.add_child(tabs)
+	for mode in [true, false]:
+		var tab := Button.new()
+		tab.text = "Guardar" if mode else "Retirar"
+		tab.custom_minimum_size.y = 42
+		tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tab.disabled = mode == deposit
+		tab.pressed.connect(_chest_menu.bind(mode))
+		tabs.add_child(tab)
+	var contents := bag if deposit else chest
+	if contents.is_empty():
+		_line("Mochila vazia." if deposit else "Baú vazio.")
+	for item in ITEM_NAMES:
+		var count := int(contents.get(item, 0))
+		if count <= 0:
+			continue
+		var label := "%s %s ×%d" % ["Guardar" if deposit else "Retirar", ITEM_NAMES[item], count]
+		_button(label, _transfer_item.bind(item, deposit, count), item)
+		if count > 1:
+			_button("Só um · %s" % ITEM_NAMES[item], _transfer_item.bind(item, deposit, 1), item)
+	_button("Voltar ao abrigo", _shelter_menu)
+
+
+func _at_shelter() -> bool:
+	return not down and game.on_foot and game.walk_pos.distance_to(safe) <= 8.0
+
+
+func _transfer_item(item: String, deposit: bool, requested: int) -> void:
+	if not _at_shelter() or not ITEM_NAMES.has(item):
+		return
+	var source := bag if deposit else chest
+	var target := chest if deposit else bag
+	var limit := CHEST_CAPACITY if deposit else CAPACITY
+	var count := int(source.get(item, 0))
+	var moved := mini(requested, mini(count, limit - _item_count(target)))
+	if moved <= 0:
+		if count > 0:
+			_notify("Baú cheio." if deposit else "Mochila cheia.")
+		return
+	if count == moved:
+		source.erase(item)
+	else:
+		source[item] = count - moved
+	target[item] = int(target.get(item, 0)) + moved
+	save()
+	_chest_menu(deposit)
 
 
 func _submit() -> void:
@@ -599,7 +677,7 @@ func _use(item: String) -> void:
 		var meter: String = {"food":"fome", "water":"sede", "med":"saude"}[item]
 		needs[meter] = minf(100, float(needs[meter]) + (35.0 if item == "med" else 42.0))
 	_remove_item(item)
-	if quest < QUESTS.size() and item == QUESTS[quest]["item"] and not bag.has(item):
+	if quest < QUESTS.size() and item == QUESTS[quest]["item"] and not bag.has(item) and not chest.has(item):
 		supply_found = false
 	save()
 	menu_kind = ""
@@ -613,8 +691,12 @@ func _remove_item(item: String) -> void:
 
 
 func _bag_count() -> int:
+	return _item_count(bag)
+
+
+func _item_count(contents: Dictionary) -> int:
 	var amount := 0
-	for count in bag.values():
+	for count in contents.values():
 		amount += int(count)
 	return amount
 
@@ -837,7 +919,7 @@ func _revive() -> void:
 		z["node"].queue_free()
 	infected.clear()
 	noises.clear()
-	supply_found = false
+	supply_found = supply_found and quest < QUESTS.size() and chest.has(QUESTS[quest]["item"])
 	game.on_foot = true
 	game.walk_pos = safe
 	game.walker.position = Vector3(safe.x,0.04,safe.y)
@@ -853,7 +935,9 @@ func _now() -> float:
 
 func _duration(seconds: float) -> String:
 	var s := maxi(0, ceili(seconds))
-	return "%d min %02d s" % [int(float(s) / 60), s % 60]
+	if s >= 3600:
+		return "%d h %02d min" % [floori(float(s) / 3600.0), floori(float(s % 3600) / 60.0)]
+	return "%d min %02d s" % [floori(float(s) / 60.0), s % 60]
 
 
 func _texture(key: String) -> Texture2D:
@@ -871,7 +955,7 @@ func save() -> void:
 	var player: Vector2 = game._actor_pos()
 	var f := FileAccess.open(SAVE, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"on_foot":game.on_foot,"areas":containers,"bag":bag,"needs":needs,"taken":taken,"vehicle":active_vehicle,
+		f.store_string(JSON.stringify({"on_foot":game.on_foot,"areas":containers,"bag":bag,"chest":chest,"needs":needs,"taken":taken,"vehicle":active_vehicle,
 			"fuel":fuel,"quest":quest,"found":supply_found,"reputation":reputation,"next":next_contract,"x":player.x,"y":player.y,
 			"cx":game.car_pos.x,"cy":game.car_pos.y,"heading":game.car_heading}))
 
@@ -884,7 +968,9 @@ func _load_progress() -> void:
 	if not data is Dictionary:
 		return
 	containers = data.get("areas", {})
+	_upgrade_loot_delays()
 	bag = data.get("bag", bag)
+	chest = data.get("chest", {})
 	needs.merge(data.get("needs", {}), true)
 	taken = data.get("taken", {})
 	active_vehicle = int(data.get("vehicle",-1))
@@ -899,3 +985,17 @@ func _load_progress() -> void:
 	game.on_foot = bool(data.get("on_foot",true)) or active_vehicle < 0
 	if float(needs["saude"]) <= 0.0:
 		_revive()
+
+
+func _upgrade_loot_delays() -> void:
+	var current := _now()
+	for entry in containers.values():
+		var previous := float(entry.get("delay", 0))
+		if previous <= 0.0 or previous >= LOOT_MIN_SECONDS:
+			continue
+		var ratio := clampf(inverse_lerp(420.0, 1180.0, previous), 0.0, 1.0)
+		var delay := roundi(lerpf(LOOT_MIN_SECONDS, LOOT_MAX_SECONDS, ratio))
+		var ready := float(entry.get("ready_at", 0))
+		if ready > current and entry["items"].is_empty():
+			entry["ready_at"] = ready - previous + delay
+		entry["delay"] = delay
