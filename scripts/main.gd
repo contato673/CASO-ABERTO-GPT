@@ -405,12 +405,16 @@ func _process(delta: float) -> void:
 	if interior.active:
 		_update_interior_camera(delta)
 		interior.tick(delta, joy_vec)
+		survival._equipment_on_top(true)
+		survival._update_hand(delta,interior.actor,not interior.posture.is_empty())
 		return
 	if in_home:
-		if intro_state == 0 and not menu_open:
+		if intro_state == 0 and not menu_open and survival.action_time <= 0.0:
 			home.update(delta, joy_vec)
 		interior.update_home_avatar(delta)
 		_update_camera(delta)
+		survival._equipment_on_top(true)
+		survival._update_hand(delta,interior.home_pawn,intro_state != 0)
 		return
 	if not menu_open:
 		if on_foot:
@@ -438,7 +442,7 @@ func _process(delta: float) -> void:
 		walker_outline.region_rect = walker.region_rect
 		walker_outline.offset = walker.offset
 	if is_instance_valid(survival.hand):
-		survival.hand.no_depth_test = covered
+		survival._equipment_on_top(covered)
 	player_marker.visible = not on_foot
 	player_marker.position = cam.unproject_position((walker.position if on_foot else car_root.position) + actor_height)
 	player_marker.queue_redraw()
@@ -467,6 +471,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event is InputEventKey and event.pressed and not event.echo:
 			match event.keycode:
 				KEY_E: interior.interact()
+				KEY_SPACE: survival.attack()
 				KEY_I: survival.inventory()
 				KEY_Q: survival.quick_wheel()
 				KEY_ESCAPE:
@@ -479,6 +484,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if intro_state == 0 and event is InputEventKey and event.pressed and not event.echo:
 			match event.keycode:
 				KEY_E, KEY_I, KEY_C: survival._personal_home_menu()
+				KEY_SPACE: survival.attack()
 				KEY_ESCAPE:
 					if menu_open:
 						survival.close()
@@ -1710,6 +1716,7 @@ func _exit_interior(window := false) -> void:
 		if not destination.is_finite():
 			survival._notify("Esta janela está obstruída.")
 			return
+	survival._reset_action()
 	interior.leave()
 	_daynight_tick(6.0)
 	survival.close()
@@ -1774,6 +1781,7 @@ func _exit_home() -> void:
 	intro_state = 0
 	in_home = false
 	survival.close()
+	survival._reset_action()
 	home.leave()
 	interior.hide_home_avatar()
 	survival._apply_outfit()
@@ -2392,7 +2400,7 @@ func _touch_vis() -> void:
 	if interior.active:
 		btn_enter.hide()
 		btn_car.hide()
-		btn_attack.hide()
+		btn_attack.visible = ph and not menu_open and interior.posture.is_empty()
 		btn_talk.visible = ph and not menu_open and interior.has_nearby_action()
 		btn_book.visible = not menu_open
 		btn_wheel.visible = ph and not menu_open

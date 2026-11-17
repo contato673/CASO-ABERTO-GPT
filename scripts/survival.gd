@@ -40,6 +40,12 @@ const EQUIPMENT_ART := {
 	"pistol": preload("res://assets/equipamento/pistol.png"),
 	"ammo": preload("res://assets/equipamento/ammo.png"),
 }
+# Grip coordinates are in the original weapon images, measured from the upper left.
+const WEAPON_GRIPS := {
+	"bat": Vector2(11.5,7.5), "crowbar": Vector2(1.5,1.5),
+	"knife": Vector2(3.5,2.5), "pistol": Vector2(8.5,5.5), "fist": Vector2(3.5,3.0),
+}
+const WEAPON_LENGTHS := {"bat":1.32,"crowbar":1.32,"knife":.83,"pistol":.87,"fist":.40}
 const CONSUMABLES := {"food": "fome", "water": "sede", "med": "saude", "bandage": "saude"}
 const SKILLS := {"care":"Primeiros socorros", "workshop":"Oficina", "field":"Sobrevivência"}
 const RECIPES := [
@@ -126,6 +132,7 @@ var voice_listener: AudioListener3D
 var voice_gap := 0.0
 var hand: Sprite3D
 var sleeve: Sprite3D
+var upper_arm: Sprite3D
 var muzzle_flash: Sprite3D
 var action_item := ""
 var action_time := 0.0
@@ -169,25 +176,29 @@ func setup(city_game: Node) -> void:
 	game.walker.position = Vector3(game.walk_pos.x, 0.04, game.walk_pos.y)
 	hand = Sprite3D.new()
 	hand.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	hand.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	hand.render_priority = 11
 	hand.shaded = false
-	game.walker.add_child(hand)
+	game.add_child(hand)
 	sleeve = Sprite3D.new()
 	sleeve.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	sleeve.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	sleeve.render_priority = 10
+	sleeve.shaded = false
 	var pixels := Image.create_empty(4, 3, false, Image.FORMAT_RGBA8)
 	pixels.fill(Color("#272432"))
-	pixels.fill_rect(Rect2i(0, 1, 3, 1), Color("#777c6c"))
+	pixels.fill_rect(Rect2i(0, 1, 3, 1), Color("#d1d3db"))
+	upper_arm = sleeve.duplicate() as Sprite3D
+	upper_arm.texture = ImageTexture.create_from_image(pixels)
+	game.add_child(upper_arm)
 	pixels.set_pixel(3, 1, Color("#e6a47c"))
 	sleeve.texture = ImageTexture.create_from_image(pixels)
-	game.walker.add_child(sleeve)
+	game.add_child(sleeve)
 	muzzle_flash = Sprite3D.new()
 	muzzle_flash.texture = preload("res://assets/equipamento/disparo.png")
 	muzzle_flash.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	muzzle_flash.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	muzzle_flash.render_priority = 12
 	muzzle_flash.pixel_size = 0.11
 	muzzle_flash.shaded = false
-	game.walker.add_child(muzzle_flash)
+	game.add_child(muzzle_flash)
 	_update_hand(0.0)
 	_refresh_vehicle()
 	_update_near()
@@ -247,6 +258,7 @@ func tick(delta: float) -> void:
 		_reset_action()
 		hand.hide()
 		sleeve.hide()
+		upper_arm.hide()
 		muzzle_flash.hide()
 		game.menu_open = true
 		_open_panel("queda", "Você caiu")
@@ -536,6 +548,8 @@ func toggle_vehicle() -> void:
 
 
 func attack() -> void:
+	if game.intro_state != 0 or (game.interior.active and not game.interior.posture.is_empty()):
+		return
 	if down or game.menu_open or not game.on_foot or action_time > 0.0:
 		return
 	if needs["energia"] < 6.0:
@@ -548,7 +562,7 @@ func attack() -> void:
 	_start_action(equipped, stats["duration"])
 	pending_hit = true
 	needs["energia"] = maxf(0.0, float(needs["energia"]) - (2.0 if equipped == "pistol" else 5.0))
-	var nearest := _attack_target(stats["reach"])
+	var nearest := {} if game.interior.active or game.in_home else _attack_target(stats["reach"])
 	if not nearest.is_empty():
 		var offset: Vector2 = nearest["pos"] - game.walk_pos
 		var right: Vector3 = game.cam.global_basis.x
@@ -572,6 +586,15 @@ func _attack_target(reach: float) -> Dictionary:
 
 func _strike(item: String, stats: Dictionary) -> void:
 	var firearm := item == "pistol"
+	if game.interior.active or game.in_home:
+		if firearm and bag.has("ammo"):
+			_remove_item("ammo")
+			if quest < QUESTS.size() and QUESTS[quest]["item"] == "ammo" and not bag.has("ammo"):
+				supply_found = false
+			save()
+		if game.interior.active:
+			make_noise(_entrance(game.interior.site),stats["noise"])
+		return
 	if game.alpha.live:
 		game.alpha.attack(item)
 		if firearm and bag.has("ammo"):
@@ -601,6 +624,10 @@ func _start_action(item: String, duration: float) -> void:
 	action_duration = duration
 	action_time = duration
 	action_face = -1.0 if game.walk_face == 0 else 1.0
+	if game.interior.active:
+		action_face = _sprite_face(game.interior.actor)
+	elif game.in_home and is_instance_valid(game.interior.home_pawn):
+		action_face = _sprite_face(game.interior.home_pawn)
 
 
 func _reset_action() -> void:
@@ -610,7 +637,11 @@ func _reset_action() -> void:
 	game.walker.offset = Vector2(0, 19)
 
 
-func _update_hand(delta: float) -> void:
+func _sprite_face(actor: Sprite3D) -> float:
+	return -1.0 if actor.region_rect.position.y < 360.0 else 1.0
+
+
+func _update_hand(delta: float, actor: Sprite3D = null, resting := false) -> void:
 	var elapsed := 0.0
 	if action_time > 0.0:
 		action_time = maxf(0.0, action_time - delta)
@@ -623,67 +654,101 @@ func _update_hand(delta: float) -> void:
 		if action_time <= 0.0:
 			_reset_action()
 
+	if actor == null:
+		actor = game.walker
 	var acting := not action_item.is_empty()
 	var item := action_item if acting else equipped
-	hand.visible = game.on_foot and not down and (acting or item != "fist")
-	muzzle_flash.hide()
+	hand.visible = game.on_foot and not down and not resting and actor.is_visible_in_tree() and (acting or item != "fist")
 	sleeve.visible = hand.visible
+	upper_arm.visible = hand.visible
+	muzzle_flash.hide()
 	if not hand.visible:
 		return
+
 	var texture: Texture2D = EQUIPMENT_ART.get(item, icons.get(item))
-	if texture == null and item == "bandage":
-		texture = icons.get("med")
+	if texture == null:
+		hand.hide()
+		sleeve.hide()
+		upper_arm.hide()
+		return
 	hand.texture = texture
-	var face := action_face if acting else (-1.0 if game.walk_face == 0 else 1.0)
-	var pose := Vector2(9, 15)
-	var tilt := -0.45
+	var face := action_face if acting else _sprite_face(actor)
+	var step := 0.0 if acting else sin(actor.region_rect.position.x / 32.0 * PI * .5)
+	var pose := Vector2(11 + step * 1.1, 13 + step * 1.35)
+	var tilt := .16 if item == "bat" else -.16
 	var body_shift := Vector2.ZERO
-	var scale_px := 0.078
 	var shot_flash := false
-	if CONSUMABLES.has(item) or item == "fuel":
+	if not WEAPONS.has(item):
 		var lift := sin(PI * clampf(elapsed / action_duration, 0.0, 1.0))
 		var use_at: Vector2 = {"water": Vector2(4, 28), "food": Vector2(5, 26),
-			"med": Vector2(2, 13), "bandage": Vector2(2, 13), "fuel": Vector2(14, 8)}[item]
+			"med": Vector2(2, 13), "bandage": Vector2(2, 13), "fuel": Vector2(14, 8)}.get(item,pose)
 		pose = pose.lerp(use_at, lift)
-		tilt = lift * (0.8 if item == "water" else -0.3)
-		body_shift.y = -lift * (2.0 if item == "med" else 1.0)
-		if texture != null:
-			scale_px = 0.40 / maxf(texture.get_width(), texture.get_height())
+		tilt = lift * (.8 if item == "water" else -.3)
+		body_shift.y = -lift
 	elif acting:
 		var impact: float = WEAPONS[item]["impact"]
+		var progress := clampf(elapsed / impact if elapsed < impact else (action_duration - elapsed) / (action_duration - impact),0,1)
 		if item == "pistol":
-			shot_flash = elapsed >= impact and elapsed - impact < 0.085
+			shot_flash = elapsed >= impact and elapsed - impact < .085
 			var recoil := exp(-maxf(0.0, elapsed - impact) * 22.0) if elapsed >= impact else 0.0
-			pose = Vector2(16 - recoil * 5, 20 + recoil * 3)
-			tilt = recoil * 0.5
-			body_shift.x = -recoil * 2.0
+			pose = Vector2(12 + progress*6 - recoil*4, 15 + progress*4 + recoil*2)
+			tilt = recoil * .42
+			body_shift.x = -recoil * 2
+		elif item in ["knife","fist"]:
+			pose = Vector2(10 + 8 * progress, 14 + 4 * progress)
+			tilt = -.12
+			body_shift.x = 3 * progress
 		else:
-			var progress := elapsed / impact if elapsed < impact else (action_duration - elapsed) / (action_duration - impact)
-			if item == "knife" or item == "fist":
-				pose = Vector2(8 + 16 * progress, 15 + 3 * progress)
-				tilt = -0.12
-			else:
-				var arc := lerpf(1.6, -0.65, elapsed / action_duration)
-				pose = Vector2(8 + 15 * progress, 15 + 10 * sin(arc))
-				tilt = arc
-			body_shift = Vector2(4 * progress, -progress)
-	hand.flip_h = face < 0.0
-	hand.pixel_size = scale_px
+			var swing := clampf(elapsed / action_duration,0,1)
+			pose = Vector2(10 + 8 * progress, 15 + 9 * sin(swing*TAU))
+			tilt = lerpf(1.55,-1.05,swing)
+			body_shift = Vector2(3 * progress,-progress)
+
+	var size := texture.get_size()
+	var unit := actor.pixel_size
+	var model_scale := unit / .072
+	hand.pixel_size = float(WEAPON_LENGTHS.get(item,.40)) * model_scale / maxf(size.x,size.y)
+	var grip_uv: Vector2 = WEAPON_GRIPS.get(item,size*.5)
+	var reversed := item in ["bat","pistol"]
+	hand.flip_h = reversed != (face < 0.0)
+	var grip_offset := Vector2(grip_uv.x-size.x*.5,size.y*.5-grip_uv.y) * hand.pixel_size
+	if hand.flip_h:
+		grip_offset.x = -grip_offset.x
+	var rotated := Basis(Vector3.BACK,tilt*face)
 	var camera: Basis = game.cam.global_basis
-	var origin: Vector3 = game.walker.global_position
-	var held := Vector2(pose.x * face, pose.y) * 0.072
-	hand.global_transform = Transform3D(camera * Basis(Vector3.BACK, tilt * face),
-		origin + camera * Vector3(held.x, held.y, 0.14))
+	var origin := actor.global_position
+	var grip := Vector2(pose.x*face,pose.y)*unit
+	var weapon_at := Vector3(grip.x,grip.y,.19) - rotated * Vector3(grip_offset.x,grip_offset.y,0)
+	hand.global_transform = Transform3D(camera * rotated, origin + camera * weapon_at)
 	if shot_flash:
-		muzzle_flash.global_transform = hand.global_transform * Transform3D(Basis.IDENTITY, Vector3(0.94 * face, 0.18, 0.03))
+		var muzzle := Vector3((size.x*.5-.5)*hand.pixel_size*face,2.0*hand.pixel_size,.03)
+		muzzle_flash.global_transform = hand.global_transform * Transform3D(Basis.IDENTITY,muzzle)
+		muzzle_flash.pixel_size = .11 * model_scale
 		muzzle_flash.show()
-	var shoulder := Vector2((5 + body_shift.x) * face, 19 + body_shift.y) * 0.072
-	var grip := held - Vector2(0.16 * face, 0)
-	var arm := grip - shoulder
-	var center := (shoulder + grip) * 0.5
-	var arm_basis := Basis(Vector3.BACK, arm.angle()) * Basis.from_scale(Vector3(maxf(0.15, arm.length()) / 0.04, 6, 1))
-	sleeve.global_transform = Transform3D(camera * arm_basis, origin + camera * Vector3(center.x, center.y, 0.07))
-	game.walker.offset = Vector2(body_shift.x * face, 19 + body_shift.y)
+
+	var shoulder := Vector2((6 + body_shift.x)*face,19 + body_shift.y)*unit
+	var elbow := shoulder.lerp(grip,.52)
+	elbow.y -= unit * (1.8 if acting else 1.05)
+	var fabric: Color = {"jacket":Color("#8caa68"),"coat":Color("#dba35c")}.get(outfit,Color("#79a2d9"))
+	_arm_segment(upper_arm,camera,origin,shoulder,elbow,model_scale,fabric,.15)
+	_arm_segment(sleeve,camera,origin,elbow,grip,model_scale,fabric,.17)
+	actor.offset = Vector2(body_shift.x*face,19+body_shift.y)
+
+
+func _arm_segment(sprite: Sprite3D, camera: Basis, origin: Vector3, start: Vector2,
+		finish: Vector2, model_scale: float, fabric: Color, depth: float) -> void:
+	var length := start.distance_to(finish)
+	var center := start.lerp(finish,.5)
+	var turn := Basis(Vector3.BACK,(finish-start).angle())
+	var stretch := Vector3((length+.035*model_scale)/.04,6.5*model_scale,1.0)
+	sprite.global_transform = Transform3D(camera * turn.scaled_local(stretch),
+		origin + camera * Vector3(center.x,center.y,depth))
+	sprite.modulate = fabric
+
+
+func _equipment_on_top(enabled: bool) -> void:
+	for sprite in [hand,sleeve,upper_arm,muzzle_flash]:
+		sprite.no_depth_test = enabled
 
 
 func make_noise(at: Vector2, radius: float) -> void:

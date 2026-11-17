@@ -85,7 +85,6 @@ var span := Vector2(11.6,10.6)
 var pos := Vector2(5.6, 9.75)
 var scene: Node3D
 var actor: Sprite3D
-var held: Sprite3D
 var obstacles: Array[Rect2] = []
 var floor_shape := PackedVector2Array()
 var sockets: Array[Dictionary] = []
@@ -99,7 +98,6 @@ var anim_key := ""
 var posture := ""
 var posture_at := Vector2.ZERO
 var home_pawn: Sprite3D
-var home_hand: Sprite3D
 var home_previous := Vector2.INF
 var home_phase := 0.0
 var home_facing := 7
@@ -191,7 +189,6 @@ func leave() -> void:
 		scene.queue_free()
 	scene = null
 	actor = null
-	held = null
 	pickups.clear()
 	actions.clear()
 	sockets.clear()
@@ -584,9 +581,6 @@ func _make_actor() -> void:
 	actor.no_depth_test = true
 	actor.render_priority = 8
 	actor.offset.y = 19
-	held = _sprite(null,pos,.5)
-	held.no_depth_test = true
-	held.render_priority = 9
 	_pose("idle",0.0)
 
 
@@ -615,13 +609,6 @@ func _pose(action: String, delta: float) -> void:
 		actor.basis = Basis(Vector3.RIGHT,-PI*.5)
 	elif action == "carrying":
 		actor.offset.y = 17.0 + sin(minf(phase,4.0)*.78)*1.5
-	var icon: Texture2D = life.icons.get(life.equipped)
-	held.texture = icon
-	held.visible = icon != null and posture.is_empty()
-	if held.visible:
-		held.pixel_size = .32 / maxf(icon.get_width(),icon.get_height())
-		var offset: Vector3 = game.cam.global_basis.x * .29 + game.cam.global_basis.z * .13
-		held.position = actor.position + offset + Vector3.UP * .79
 
 
 func _loot_icon(item: String) -> Texture2D:
@@ -707,7 +694,7 @@ func tick(delta: float,input: Vector2) -> void:
 	screen += Vector2(float(Input.is_physical_key_pressed(KEY_D))-float(Input.is_physical_key_pressed(KEY_A)),
 		float(Input.is_physical_key_pressed(KEY_S))-float(Input.is_physical_key_pressed(KEY_W)))
 	screen = screen.limit_length()
-	var walking: bool = screen.length_squared() > .02 and not game.menu_open
+	var walking: bool = screen.length_squared() > .02 and not game.menu_open and life.action_time <= 0.0
 	var running: bool = walking and Input.is_physical_key_pressed(KEY_SHIFT) and life.needs["energia"] > 8.0
 	if walking:
 		posture = ""
@@ -836,10 +823,6 @@ func update_home_avatar(delta: float) -> void:
 		home_pawn.no_depth_test = true
 		home_pawn.render_priority = 8
 		room.add_child(home_pawn)
-		home_hand = Sprite3D.new()
-		home_hand.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		home_hand.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-		room.add_child(home_hand)
 	var current: Vector2 = room.pos
 	var movement := current-home_previous if home_previous.is_finite() else Vector2.ZERO
 	if movement.length_squared() > .000004:
@@ -852,16 +835,9 @@ func update_home_avatar(delta: float) -> void:
 	var row := 320 if home_facing in [0,1,2,3] else 360
 	home_pawn.region_rect = Rect2(frame*FRAME.x,row,FRAME.x,FRAME.y)
 	home_pawn.position = _v(current)
-	var icon: Texture2D = life.icons.get(life.equipped)
-	home_hand.texture = icon
-	home_hand.visible = icon != null and game.intro_state == 0
-	if home_hand.visible:
-		home_hand.pixel_size = .33 / maxf(icon.get_width(),icon.get_height())
-		home_hand.position = home_pawn.position + game.cam.global_basis.x*.29 + Vector3.UP*.78
 
 
 func hide_home_avatar() -> void:
 	home_previous = Vector2.INF
 	if is_instance_valid(home_pawn):
 		home_pawn.hide()
-		home_hand.hide()
