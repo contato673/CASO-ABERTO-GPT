@@ -31,13 +31,15 @@ A história, a Central e os personagens do caso são ficcionais. Os marcos foram
 
 ## Campo Grande e seus moradores
 
-Há 16 locais reais cadastrados com implantação georreferenciada e referências de endereço, entre eles Casa do Artesão, Mercadão, Grande Hotel Gaspar, Shopping Campo Grande, MARCO e Concha Acústica Helena Meirelles. Os modelos reproduzem volumes aproximados do mapa com fachadas estilizadas. Os lotes de preenchimento são uma estimativa para áreas com dados incompletos. As fontes de cada endereço estão em data/city.json.
+Há 26 locais reais cadastrados com implantação georreferenciada e referências de endereço, entre eles Casa do Artesão, Mercadão, Grande Hotel Gaspar, Shopping Campo Grande, MARCO e Concha Acústica Helena Meirelles. Os modelos reproduzem volumes aproximados do mapa com fachadas estilizadas. Os lotes de preenchimento são uma estimativa para áreas com dados incompletos. Os endereços e as referências cartográficas ficam em data/city.json. A Casa do Artesão usa a implantação em L, a fachada amarela e vãos arqueados. A Morada dos Baís tem guarnições claras, portas vermelhas e balcões. O Grande Hotel Gaspar tem faixas de fachada na esquina curva.
+
+O comércio mapeado inclui Pague Menos (13 de Maio e Miraflores), Drogaria São Bento, Supermercado Comper, Supermercado Campos, Ki-Frutas, Carrefour, Feira Indígena, Camelódromo e Galeria Afonso Pena. Shopping Campo Grande, Pátio Central e Shopping Estação aparecem nos respectivos endereços.
 
 Os locais interativos têm um personagem fixo junto ao acesso. Há 300 moradores com nome, profissão, apresentação e horários de trabalho ou descanso. Eles se deslocam entre pontos fixos do seu trajeto e podem conversar com o detetive a pé. Os personagens, os comércios criados para as missões e os acontecimentos policiais são ficcionais.
 
 ## Validação
 
-- Verificação geométrica de 16.229 estruturas e 1.800 objetos posicionados. Nenhuma interseção com as faixas de circulação no conjunto auditado.
+- Verificação geométrica de 16.231 estruturas e 1.800 objetos posicionados. Nenhuma interseção com as faixas de circulação no conjunto auditado.
 - Verificação visual no Godot com o carro em vista, atrás de uma construção alta e atrás de um veículo alto de teste.
 - Teste do primeiro caso com as diligências em ordem alternativa, rotas válidas entre os destinos, recuperação do progresso salvo e duas tentativas de apresentar evidência: uma insuficiente e outra aceita.
 - A versão exportada iniciou no Windows. No navegador local, dirigi até a Central e recebi as três diligências do Sargento Lima. A saída e a entrada no carro foram exercitadas na interface vertical, em navegador de desktop.
@@ -46,6 +48,8 @@ Os locais interativos têm um personagem fixo junto ao acesso. Há 300 moradores
 
 
 Capturas revisadas no Godot. [Central em tela vertical](testes-visuais/central-mobile.png), [Central à noite](testes-visuais/noite-mobile.png), [vista de teste dos prédios altos](testes-visuais/torres.png) e [Casa do Artesão](testes-visuais/casa-artesao.png).
+
+[Testes de comércio em tela vertical](testes-visuais/): farmácia, supermercado e shopping.
 
 ## Abrir e editar
 

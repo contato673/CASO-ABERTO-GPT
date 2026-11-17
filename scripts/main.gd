@@ -411,6 +411,9 @@ func _process(delta: float) -> void:
 	if street_last_pos.distance_squared_to(_actor_pos()) > 6.25:
 		street_last_pos = _actor_pos()
 		var street := _street_at(street_last_pos)
+		if street.is_empty() and on_foot and poi_index >= 0:
+			var address := str(pois[poi_index].get("address", ""))
+			street = address.get_slice(",", 0)
 		street_label.text = street if not street.is_empty() else "Via sem nome no mapa"
 	street_label.show()
 	_update_signs()
@@ -2393,7 +2396,7 @@ func _update_signs() -> void:
 				if d > 49.0 * 49.0:
 					continue
 				var screen := cam.unproject_position(anchor)
-				if available.grow_individual(65.0, 0.0, 65.0, 0.0).has_point(screen):
+				if available.grow_individual(65.0, 72.0, 65.0, 0.0).has_point(screen):
 					candidates.append({"d": d, "pos": screen, "text": sign["text"]})
 	candidates.sort_custom(func(a, b): return a["d"] < b["d"])
 	var occupied: Array[Rect2] = []
@@ -2409,6 +2412,7 @@ func _update_signs() -> void:
 		sign.reset_size()
 		var pos: Vector2 = item["pos"] - Vector2(sign.size.x * 0.5, sign.size.y)
 		pos.x = clampf(pos.x, available.position.x, available.end.x - sign.size.x)
+		pos.y = maxf(pos.y, available.position.y)
 		var rect := Rect2(pos, sign.size)
 		if not available.encloses(rect) or occupied.any(func(old): return old.grow(5).intersects(rect)):
 			continue
@@ -2707,15 +2711,24 @@ func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: floa
 	var wall: Color = colors[index % colors.size()]
 	var roof: Color = roofs[(index * 7) % roofs.size()]
 	match site:
-		"heritage":
-			wall = Color("#c9ad83")
-			roof = Color("#79635a")
+		"casa_artesao":
+			wall = Color("#e3bf6f")
+			roof = Color("#815a49")
+		"morada_bais":
+			wall = Color("#e4bd57")
+			roof = Color("#70534b")
 		"market":
 			wall = Color("#c1a179")
 			roof = Color("#78645b")
 		"retail", "mall":
 			wall = Color("#a6a9a2")
 			roof = Color("#6d7275")
+		"pharmacy":
+			wall = Color("#d2cbb9")
+			roof = Color("#566883")
+		"supermarket":
+			wall = Color("#c3b6a2")
+			roof = Color("#71664f")
 		"gaspar":
 			wall = Color("#c9b593")
 			roof = Color("#766575")
@@ -2761,11 +2774,14 @@ func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: floa
 				_face_c(st, middle + normal * 0.06 + Vector3.UP * (level + 0.35), Vector3.UP * 0.045, span * length * 0.5, Color("#665965"))
 		elif site in ["museum", "arena"]:
 			_face_c(st, middle + normal * 0.05 + Vector3.UP * (height - 0.5), Vector3.UP * 0.28, span * length * 0.5, wall.lightened(0.17))
-		elif site == "heritage":
-			var cornice := wall.lightened(0.19)
-			_face_c(st, middle + normal * 0.035 + Vector3.UP * (height - 0.66), Vector3.UP * 0.15, span * length * 0.5, cornice)
-		elif site in ["market", "retail", "mall"]:
-			_face_c(st, middle + normal * 0.04 + Vector3.UP * 2.4, Vector3.UP * 0.38, span * length * 0.46, roof.darkened(0.22))
+		elif site in ["casa_artesao", "morada_bais"]:
+			_heritage_facade(st, middle, span, normal, length, height, site == "morada_bais")
+			continue
+		elif site in ["market", "retail", "mall", "pharmacy", "supermarket"]:
+			var fascia := Color("#315982") if site == "pharmacy" else roof.darkened(0.22)
+			_face_c(st, middle + normal * 0.04 + Vector3.UP * 2.8, Vector3.UP * 0.38, span * length * 0.46, fascia)
+			if site in ["pharmacy", "supermarket"] and length > 4.0:
+				_face_c(st, middle + normal * 0.045 + Vector3.UP * 1.35, Vector3.UP * 0.93, span * minf(2.6, length * 0.36), Color("#557178"))
 		var floors := maxi(1, roundi(height / 3.1))
 		for col in columns:
 			var offset := (float(col + 1) / float(columns + 1) - 0.5) * length
@@ -2777,6 +2793,44 @@ func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: floa
 				_face_c(st, center, Vector3.UP * 0.56, span * 0.45, glass)
 				if height > 6.8 or not site.is_empty():
 					_face_c(st, center - Vector3.UP * 0.51 + normal * 0.018, Vector3.UP * 0.08, span * 0.56, wall.lightened(0.22))
+
+
+func _arch_opening(st: SurfaceTool, pos: Vector3, along: Vector3, out: Vector3, half_width: float, body: float, color: Color) -> void:
+	_face_c(st, pos + Vector3.UP * (body * 0.5), along * half_width, Vector3.UP * (body * 0.5), color)
+	var spring := pos + Vector3.UP * body
+	for i in 8:
+		var a := float(i) * PI / 8.0
+		var b := float(i + 1) * PI / 8.0
+		var v1 := spring + along * (cos(a) * half_width) + Vector3.UP * (sin(a) * half_width * 0.68)
+		var v2 := spring + along * (cos(b) * half_width) + Vector3.UP * (sin(b) * half_width * 0.68)
+		for vertex in [spring, v1, v2]:
+			_bv(st, vertex.x, vertex.y, vertex.z, out, color)
+
+
+func _heritage_facade(st: SurfaceTool, middle: Vector3, along: Vector3, out: Vector3, length: float, height: float, morada: bool) -> void:
+	var trim := Color("#eee1c3")
+	var wood := Color("#773a38")
+	for h in [0.38, height - 0.68, height - 0.20]:
+		_face_c(st, middle + out * 0.043 + Vector3.UP * float(h), along * length * 0.5, Vector3.UP * 0.10, trim)
+	if morada:
+		_face_c(st, middle + out * 0.045 + Vector3.UP * 3.45, along * length * 0.5, Vector3.UP * 0.12, trim)
+	var openings := floori(length / 2.7)
+	for i in openings:
+		var distance := (float(i + 1) / float(openings + 1) - 0.5) * length
+		var opening := middle + along * distance + out * 0.05
+		var base := 0.26 if i % 3 == 1 or morada else 0.96
+		var body := 2.05 if base < 0.4 else 1.52
+		_arch_opening(st, opening + Vector3.UP * base, along, out, 0.65, body + 0.02, trim)
+		_arch_opening(st, opening + Vector3.UP * (base + 0.08) + out * 0.022, along, out, 0.48, body - 0.12, wood)
+		if morada:
+			_arch_opening(st, opening + Vector3.UP * 4.06, along, out, 0.61, 1.65, trim)
+			_arch_opening(st, opening + Vector3.UP * 4.16 + out * 0.022, along, out, 0.45, 1.45, Color("#364455"))
+			var balcony := opening + Vector3.UP * 4.01 + out * 0.31
+			_face_c(st, balcony, along * 0.80, out * 0.24, trim)
+			_face_c(st, balcony + out * 0.23 + Vector3.UP * 0.59, along * 0.76, Vector3.UP * 0.045, Color("#494541"))
+			for j in 6:
+				var rail := balcony + along * ((float(j) - 2.5) * 0.275) + out * 0.23 + Vector3.UP * 0.29
+				_face_c(st, rail, along * 0.025, Vector3.UP * 0.27, Color("#494541"))
 
 
 func _make_shops() -> void:
@@ -3127,7 +3181,7 @@ func _build_fixed_people() -> void:
 
 func _site_entrance(place: Dictionary, from_street: Vector2, fallback: Vector2) -> Vector2:
 	for building in city["buildings"]:
-		if str(building.get("osm_way", "")) != str(place["osm_way"]):
+		if str(building.get("osm_way", building.get("osm_node", ""))) != str(place["osm_way"]):
 			continue
 		var shape := _poly(building["p"])
 		var best := INF
@@ -3375,7 +3429,7 @@ func _draw_minimap() -> void:
 	var half := sz * 0.5
 	minimap.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.10, 0.14, 0.11, 0.92), true)
 	var rad := (sz.x * 0.75) / mm_scale
-	var view := Rect2(car_pos - Vector2.ONE * rad, Vector2.ONE * rad * 2.0)
+	var view := Rect2(_actor_pos() - Vector2.ONE * rad, Vector2.ONE * rad * 2.0)
 	var major := ["motorway", "trunk", "primary", "secondary", "tertiary"]
 	for pass_i in 2:
 		for ri in roads.size():
@@ -4311,6 +4365,8 @@ func _update_goal_arrow() -> void:
 		for p in pois:
 			if str(p["id"]) == tid:
 				tp = Vector2(float(p.get("access_x", p["x"])), float(p.get("access_y", p["y"])))
+				if on_foot:
+					tp = p.get("npc_pos", tp)
 				found = true
 				break
 	var here := _actor_pos()
