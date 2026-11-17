@@ -84,7 +84,7 @@ const METER_PIXELS := [
 	[".....###..", "....+##...", "...+##....", "..+######.", ".+#######.", "....###...", "...###....", "...##.....", "..##......", "..#......."],
 ]
 
-var save_path := "user://sobrevivencia-%s.json" % ProjectSettings.get_setting("application/config/version", "dev")
+var save_path := "user://sobrevivencia-%s.json" % ProjectSettings.get_setting("application/config/save_version", ProjectSettings.get_setting("application/config/version", "dev"))
 var game
 var needs := {"saude":100.0, "fome":92.0, "sede":89.0, "energia":100.0}
 var bag := {"water":1, "food":1, "bat":1}
@@ -112,7 +112,6 @@ var meter_labels: Array[Label] = []
 var meter_cards: Array[PanelContainer] = []
 var bars: Array[ProgressBar] = []
 var pulse := 0.0
-var restock_label: Label
 var save_timer := 0.0
 var population_timer := 0.0
 var equipped := "bat"
@@ -231,7 +230,6 @@ func tick(delta: float) -> void:
 	if pulse > 0.15:
 		pulse = 0.0
 		_update_hud()
-		_update_restock_countdown()
 	save_timer += delta
 	if save_timer > 5.0:
 		save_timer = 0.0
@@ -386,10 +384,7 @@ func _change_outfit(item: String) -> void:
 	outfit = item
 	_apply_outfit()
 	save()
-	if sheltered:
-		_clothing_menu()
-	else:
-		_inventory_menu()
+	_inventory_menu()
 
 
 func close() -> void:
@@ -736,7 +731,6 @@ func _build_hud() -> void:
 
 func _open_panel(kind: String, title: String) -> void:
 	menu_kind = kind
-	restock_label = null
 	game.menu_open = true
 	game.joy_vec = Vector2.ZERO
 	game.joy_active = false
@@ -812,92 +806,33 @@ func _notify(message: String) -> void:
 func _loot_menu() -> void:
 	var id := str(opened["id"])
 	var stash := _stash(opened)
-	_open_panel("loot", str(opened["name"]))
+	_open_panel("entrance", str(opened["name"]))
 	var address := str(opened.get("address", ""))
 	if not address.is_empty():
 		_line(address)
-	if quest < QUESTS.size() and QUESTS[quest]["place"] == id and str(QUESTS[quest]["item"]).is_empty():
-		_button("Investigar · " + str(QUESTS[quest]["title"]), _survey.bind(id))
-	if not bool(stash["unlocked"]):
-		_line("O acesso está trancado. Quebrar o vidro faz barulho e pode atrair infectados próximos.")
-		_button("Quebrar o vidro", _break_window)
+	if _exterior_survey(opened):
+		_button("Investigar o local", _survey.bind(id))
 		return
-	if opened.has("footprint"):
-		_button("Usar como esconderijo", _hideout_menu)
-	var loot: Dictionary = stash["items"]
-	if loot.is_empty():
-		restock_label = _line("")
-		_update_restock_countdown()
-		return
-	for item in loot:
-		_button("Pegar %s ×%d" % [ITEM_NAMES[item], loot[item]], _take.bind(id, item), item)
+	if bool(stash["unlocked"]):
+		_button("Entrar", game._enter_interior.bind(opened))
+	else:
+		_line("Acesso trancado. Quebrar o vidro atrai infectados.")
+		_button("Quebrar o vidro e entrar", _break_window)
 
 
-func _update_restock_countdown() -> void:
-	if menu_kind != "loot" or restock_label == null:
-		return
-	var remaining := float(containers[str(opened["id"])]["ready_at"]) - _now()
-	if remaining <= 0.0:
-		_loot_menu()
-		return
-	restock_label.text = "Sem suprimentos. Nova busca em %s." % _duration(remaining)
+func _exterior_survey(place: Dictionary) -> bool:
+	return str(place["id"]) in ["praca", "ary_coelho", "parque_nacoes", "obelisco", "relogio14"]
 
 
 func _break_window() -> void:
 	var stash := _stash(opened)
-	if bool(stash["unlocked"]):
-		return
-	stash["unlocked"] = true
-	dirty_hands = true
-	make_noise(_entrance(opened), 72.0)
-	_notify("Vidro quebrado. Escute os passos.")
-	save()
-	_loot_menu()
-
-
-func _hideout_menu() -> void:
-	if not opened.has("footprint") or not bool(_stash(opened)["unlocked"]):
-		return
-	sheltered = true
-	_open_panel("hideout", "Esconderijo · " + str(opened["name"]))
-	_line("Mãos sujas" if dirty_hands else "Mãos limpas")
-	_button("Descansar", _hideout_rest)
-	_button("Lavar as mãos", _wash_hands)
-	_button("Trocar de roupa", _clothing_menu)
-	if _window_exit().is_finite():
-		_button("Sair pela janela", _leave_window)
-	_button("Voltar à entrada", close)
-
-
-func _hideout_rest() -> void:
-	if not sheltered or float(needs["energia"]) >= 98.0:
-		return
-	needs["energia"] = minf(100.0, float(needs["energia"]) + 26.0)
-	needs["fome"] = maxf(0.0, float(needs["fome"]) - 5.0)
-	needs["sede"] = maxf(0.0, float(needs["sede"]) - 7.0)
-	_notify("Você descansou. A fome e a sede aumentaram.")
-	save()
-
-
-func _wash_hands() -> void:
-	if sheltered:
-		dirty_hands = false
-		_notify("Mãos lavadas.")
+	if not bool(stash["unlocked"]):
+		stash["unlocked"] = true
+		dirty_hands = true
+		make_noise(_entrance(opened), 72.0)
+		_notify("Vidro quebrado. Escute os passos.")
 		save()
-		_hideout_menu()
-
-
-func _clothing_menu() -> void:
-	_open_panel("clothing", "Roupas")
-	_line("Vestindo: %s" % ("Roupa inicial" if outfit.is_empty() else ITEM_NAMES[outfit]))
-	for item in CLOTHES:
-		if bag.has(item) and item != outfit:
-			_button("Vestir " + str(ITEM_NAMES[item]), _change_outfit.bind(item))
-	if not outfit.is_empty():
-		_button("Vestir roupa inicial", _change_outfit.bind(""))
-	elif not CLOTHES.keys().any(func(item): return bag.has(item)):
-		_line("Procure outras roupas nas casas.")
-	_button("Voltar ao esconderijo", _hideout_menu)
+	game._enter_interior(opened)
 
 
 func _window_exit() -> Vector2:
@@ -918,28 +853,14 @@ func _window_exit() -> Vector2:
 	return best if best != entry else Vector2.INF
 
 
-func _leave_window() -> void:
-	if not sheltered:
-		return
-	var destination := _window_exit()
-	if not destination.is_finite():
-		return
-	close()
-	game.walk_pos = destination
-	game.walker.position = Vector3(destination.x, 0.04, destination.y)
-	make_noise(destination, 12.0)
-	_update_near()
-	save()
-
-
-func _take(id: String, item: String) -> void:
+func take_interior(id: String, item: String) -> bool:
 	if not containers.has(id) or _bag_count() >= CAPACITY:
 		_notify("Mochila cheia.")
-		return
+		return false
 	var stash: Dictionary = containers[id]
 	var items: Dictionary = stash["items"]
 	if not items.has(item) or int(items[item]) <= 0:
-		return
+		return false
 	bag[item] = int(bag.get(item, 0)) + 1
 	items[item] -= 1
 	if items[item] <= 0:
@@ -949,7 +870,7 @@ func _take(id: String, item: String) -> void:
 	if quest < QUESTS.size() and item == QUESTS[quest]["item"] and (id == QUESTS[quest]["place"] or quest < 3):
 		supply_found = true
 	save()
-	_loot_menu()
+	return true
 
 
 func _stash(p: Dictionary) -> Dictionary:
@@ -971,9 +892,19 @@ func _stash(p: Dictionary) -> Dictionary:
 		"residence":["water","food","cloth","parts","med","jacket","shirt","coat","dirty_water","wood"],
 		"other":["food","water","parts","fuel","bat","crowbar","cloth","wood","manual"]
 	}[type]
+	var venue: String = game.interior.classify(p)
+	var specialized := {
+		"school":["cloth","food","water","manual","bandage","wood"],
+		"industry":["wood","parts","fuel","cloth","crowbar","bandage"],
+		"police":["ammo","parts","bandage","manual","cloth","crowbar"],
+		"hotel":["water","food","cloth","med","jacket","shirt"],
+		"office":["parts","manual","water","bandage","food","cloth"],
+	}
+	if specialized.has(venue):
+		pool = specialized[venue]
 	var stock := {}
 	var count := random.randi_range(0, 2)
-	if type != "other":
+	if type in ["pharmacy","supermarket","mall"]:
 		count = random.randi_range(1, 3)
 	for i in count:
 		var item: String = pool[random.randi_range(0, pool.size() - 1)]
@@ -982,12 +913,13 @@ func _stash(p: Dictionary) -> Dictionary:
 	var delay := random.randi_range(LOOT_MIN_SECONDS, LOOT_MAX_SECONDS)
 	var lock_rate := 0.42 if type == "residence" else (0.55 if type != "other" else 0.36)
 	var lock := id == "pague_menos_13" or id == "patio_central" or random.randf() < lock_rate
+	var unlocked := bool(containers.get(id, {}).get("unlocked", not lock))
 	var first_equipment := cycle == 1 or bool(containers.get(id, {}).get("arms_pending", false))
 	if first_equipment or (id == "mercado" and random.randf() < 0.30) or (id == "patio_central" and random.randf() < 0.16):
 		_stock_new_equipment(id, stock)
 	if not stock.has("ammo") and type == "mall" and random.randf() < 0.18:
 		stock["ammo"] = 2
-	var entry := {"items":stock, "unlocked":not lock, "delay":delay, "cycle":cycle, "ready_at":(_now() + delay if stock.is_empty() else 0.0)}
+	var entry := {"items":stock, "unlocked":unlocked, "delay":delay, "cycle":cycle, "ready_at":(_now() + delay if stock.is_empty() else 0.0)}
 	containers[id] = entry
 	return entry
 
@@ -1034,6 +966,8 @@ func _shelter_menu() -> void:
 			_line("Novo contrato em %s." % _duration(next_contract - _now()))
 	else:
 		_line(objective_text())
+	if not game.interior.active:
+		_button("Entrar no Posto Barão", game._enter_interior.bind(sites["central"]))
 	_button("Descansar", _rest)
 	_button("Diário de missões", _journal.bind(_shelter_menu))
 
@@ -1457,9 +1391,9 @@ func _update_near() -> void:
 						var center := bounds.get_center()
 						var residence: bool = building["use"] == "residence"
 						closest_site = {"id":"b_%d_%d" % [roundi(center.x),roundi(center.y)],
-							"name":"Casa abandonada" if residence else "Edificação abandonada",
+							"name":("Casa abandonada" if residence else {"school":"Escola abandonada", "warehouse":"Galpão abandonado"}.get(str(building["use"]),"Edificação abandonada")),
 							"category":"residence" if residence else "", "x":edge.x, "y":edge.y,
-							"footprint":polygon, "context":"building"}
+							"footprint":polygon, "context":"building", "height":building["h"], "building_use":building["use"]}
 						best = d
 
 

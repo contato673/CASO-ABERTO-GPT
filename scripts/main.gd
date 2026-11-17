@@ -57,7 +57,7 @@ const STORIES := [
 	"Nesse bairro a gente desconfia de todo mundo. Confie no que você vê, não no que ouvem por aí.",
 ]
 
-var save_path := "user://casos-%s.json" % ProjectSettings.get_setting("application/config/version", "dev")
+var save_path := "user://casos-%s.json" % ProjectSettings.get_setting("application/config/save_version", ProjectSettings.get_setting("application/config/version", "dev"))
 var city: Dictionary
 var roads: Array = []
 var pois: Array = []
@@ -137,6 +137,7 @@ var portrait_cache: Dictionary = {}
 var q_t := -8.0
 var slow_n := 0
 var home: Node3D
+var interior = INTERIOR_SCRIPT.new()
 var alpha = ALPHA_SCRIPT.new()
 var session_ready := false
 var in_home := false
@@ -165,6 +166,11 @@ const BACKGROUNDS := [
 	["Técnico de rádio", "Você consertava equipamentos de comunicação e conhecia as frequências da região."],
 ]
 const ALPHA_SCRIPT := preload("res://scripts/alpha.gd")
+const STREET_ART := "res://assets/interiores_locais/"
+const STREET_RUINS := [["street_drum",.93],["street_rubble",.52],["street_wire",1.12],["street_cone",.64],
+	["street_dumpster",1.27],["street_tires",.64],["street_scrap",.62],["street_papers",.16],
+	["street_supply",.77],["street_metal",.51],["barricade",1.19]]
+const INTERIOR_SCRIPT := preload("res://scripts/interior.gd")
 const HOME_SCRIPT := preload("res://scripts/home.gd")
 const CASES := [
 	{"name": "O relógio da estação", "steps": [
@@ -234,6 +240,8 @@ var pad_id := ""
 var farm_id := ""
 var minimap: Control
 var case_label: Label
+var btn_case: Button
+var objective_expanded := true
 var poi_index := -1
 var menu_open := false
 var full_line := ""
@@ -330,6 +338,7 @@ func _ready() -> void:
 	_setup_survival_places()
 	_fill_abandoned_car_gaps()
 	_distribute_abandoned_cars()
+	_build_ruined_streets()
 	walker = _person_sprite(4)
 	walker_outline = walker.duplicate()
 	walker_outline.no_depth_test = true
@@ -362,6 +371,8 @@ func _start_session(account: String) -> void:
 	home.cam = cam
 	add_child(survival)
 	survival.setup(self)
+	add_child(interior)
+	interior.setup(self, survival)
 	cam_focus = walker.position
 	_update_camera(1.0)
 	_start_music()
@@ -387,9 +398,14 @@ func _process(delta: float) -> void:
 	if ui_dirty:
 		_layout_ui()
 	_touch_vis()
+	if interior.active:
+		_update_interior_camera(delta)
+		interior.tick(delta, joy_vec)
+		return
 	if in_home:
 		if intro_state == 0 and not menu_open:
 			home.update(delta, joy_vec)
+		interior.update_home_avatar(delta)
 		_update_camera(delta)
 		return
 	if not menu_open:
@@ -428,7 +444,7 @@ func _process(delta: float) -> void:
 	case_label.text = survival.objective_text()
 	if not menu_open and survival.available() and (not ph or survival.closest_site.has("context")):
 		prompt_label.text = ("" if ph else "[E] ") + str(survival.closest_site["name"])
-		prompt_label.position.y = case_label.position.y + case_label.size.y + 6
+		prompt_label.position.y = (case_label.position.y + case_label.size.y if objective_expanded else btn_case.position.y + btn_case.size.y) + 6
 		prompt_label.show()
 	else:
 		prompt_label.hide()
@@ -436,6 +452,22 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not session_ready or (not alpha.endpoint.is_empty() and not alpha.live):
+		return
+	if interior.active:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			interior.tap(event.position)
+		elif event is InputEventScreenTouch and event.pressed:
+			interior.tap(event.position)
+		elif event is InputEventKey and event.pressed and not event.echo:
+			match event.keycode:
+				KEY_E: interior.interact()
+				KEY_I: survival.inventory()
+				KEY_Q: survival.quick_wheel()
+				KEY_ESCAPE:
+					if menu_open:
+						survival.close()
+					else:
+						_exit_interior()
 		return
 	if in_home:
 		if intro_state == 0 and event is InputEventKey and event.pressed and not event.echo:
@@ -638,7 +670,11 @@ func _build_world() -> void:
 		for plot in plots:
 			if _bbox(plot).get_area() < 7.0 or Geometry2D.triangulate_polygon(plot).is_empty() or not road_clearance.is_clear(plot):
 				continue
-			_add_bpoly(plot, h, "residence" if h < 9.0 and not b.has("site") else "", str(b.get("osm_way", "")))
+			var use := str(b.get("building", b.get("use", "")))
+			if use.is_empty() and not b.has("site"):
+				var size := _bbox(plot).size
+				use = "warehouse" if h < 12.0 and size.x * size.y > 450.0 else ("residence" if h < 9.0 else "")
+			_add_bpoly(plot, h, use, str(b.get("osm_way", "")))
 			_bk_add(bld_bk, _bbox(plot).get_center())
 			var model_site := str(b.get("site", ""))
 			match str(b.get("osm_way", "")):
@@ -1636,6 +1672,67 @@ func _swap_car(path: String) -> void:
 	car_root.add_child(proxy)
 
 
+func _enter_interior(place: Dictionary) -> void:
+	if interior.active or in_home or not on_foot:
+		return
+	survival.close()
+	joy_vec = Vector2.ZERO
+	joy_active = false
+	walker.hide()
+	car_root.hide()
+	minimap.hide()
+	player_marker.hide()
+	prompt_label.hide()
+	interior.enter(place)
+	_update_interior_camera(1.0)
+
+
+func _exit_interior(window := false) -> void:
+	if not interior.active:
+		return
+	var destination := Vector2.INF
+	if window and interior.site.has("footprint"):
+		survival.opened = interior.site
+		destination = survival._window_exit()
+		if not destination.is_finite():
+			survival._notify("Esta janela está obstruída.")
+			return
+	interior.leave()
+	_daynight_tick(6.0)
+	survival.close()
+	joy_vec = Vector2.ZERO
+	joy_active = false
+	if destination.is_finite():
+		walk_pos = destination
+		survival.make_noise(destination, 12.0)
+	walker.position = Vector3(walk_pos.x,.04,walk_pos.y)
+	walker.show()
+	car_root.visible = survival.active_vehicle >= 0
+	minimap.show()
+	cam_focus = walker.position
+	_update_camera(1.0)
+	street_last_pos = Vector2.INF
+	survival._update_near()
+	survival.save()
+
+
+func _update_interior_camera(delta: float) -> void:
+	var viewport := get_viewport().get_visible_rect().size
+	var aspect := maxf(.3,viewport.aspect())
+	var target := maxf(15.0,(interior.span.x + interior.span.y) * .73 / aspect)
+	cam.size = lerpf(cam.size, target, minf(1.0,delta * 9.0))
+	if env_ref != null:
+		env_ref.background_color = Color("#171e27")
+		env_ref.ambient_light_color = Color("#a5b0bc")
+		env_ref.ambient_light_energy = .49
+	if sun_ref != null:
+		sun_ref.light_energy = .34
+		sun_ref.light_color = Color("#f6ecde")
+	var focus: Vector3 = interior.focus() + Vector3(0,.25,0)
+	cam.position = focus + Vector3(18,19,18)
+	cam.look_at(focus,Vector3.UP)
+
+
 func _enter_home(creation := false) -> void:
 	if in_home or (not creation and (menu_open or not on_foot or not survival.at_personal_home())):
 		return
@@ -1665,6 +1762,7 @@ func _exit_home() -> void:
 	in_home = false
 	survival.close()
 	home.leave()
+	interior.hide_home_avatar()
 	survival._apply_outfit()
 	walker.visible = on_foot
 	car_root.visible = not on_foot and survival.active_vehicle >= 0
@@ -2270,6 +2368,19 @@ func _label_bg(l: Label, pad_x: float, pad_y: float) -> void:
 
 
 func _touch_vis() -> void:
+	if interior.active:
+		btn_car.hide()
+		btn_attack.hide()
+		btn_talk.visible = ph and not menu_open
+		btn_book.visible = not menu_open
+		btn_wheel.visible = ph and not menu_open
+		nav_arrow.hide()
+		case_label.hide()
+		btn_case.hide()
+		street_label.hide()
+		joy.visible = ph and not menu_open
+		interior.hud.visible = not menu_open
+		return
 	if in_home:
 		btn_car.hide()
 		btn_talk.hide()
@@ -2278,6 +2389,7 @@ func _touch_vis() -> void:
 		btn_attack.hide()
 		nav_arrow.hide()
 		case_label.hide()
+		btn_case.hide()
 		street_label.hide()
 		survival.hud.visible = intro_state == 0
 		joy.visible = intro_state == 0 and ph and not menu_open
@@ -2295,7 +2407,8 @@ func _touch_vis() -> void:
 	btn_attack.visible = ph and not menu_open and on_foot
 	nav_arrow.visible = minimap.visible and nav_has and not menu_open
 	joy.visible = ph and not menu_open
-	case_label.visible = true
+	btn_case.visible = not menu_open
+	case_label.visible = objective_expanded and not menu_open
 
 
 func _layout_ui() -> void:
@@ -2333,7 +2446,9 @@ func _layout_ui() -> void:
 	street_label.size.x = cw
 	street_label.add_theme_font_size_override("font_size", 21 if ph else 17)
 	_label_bg(street_label, 10, 5)
-	case_label.position = Vector2(m, 133 if ph else 111)
+	btn_case.position = Vector2(m, 133 if ph else 111)
+	btn_case.size = Vector2(124,35)
+	case_label.position = btn_case.position + Vector2(0,38)
 	case_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	case_label.custom_minimum_size = Vector2(cw, 0)
 	case_label.size = Vector2(cw, 0)
@@ -2427,7 +2542,10 @@ func _on_joy_input(ev: InputEvent) -> void:
 
 func _on_touch_interact() -> void:
 	if not menu_open:
-		survival.interact()
+		if interior.active:
+			interior.interact()
+		else:
+			survival.interact()
 
 
 func _on_touch_notebook() -> void:
@@ -3180,6 +3298,85 @@ func _place_street_object(path: String, q: Vector2, dir: Vector2, scale_factor: 
 	return true
 
 
+func _build_ruined_streets() -> void:
+	if not ResourceLoader.exists(STREET_ART + "street_drum.png"):
+		return
+	var occupied := {}
+	for shape in placed_street_objects:
+		_bk_add(occupied, _bbox(shape).get_center())
+	for car in parked_vehicles:
+		_bk_add(occupied,car["pos"])
+	var ordered := rd_bk.keys()
+	ordered.sort()
+	var random := RandomNumberGenerator.new()
+	random.seed = 28137
+	var placed := 0
+	for cell in ordered:
+		if random.randf() > .19 or placed >= 240:
+			continue
+		var choices: Array = rd_bk[cell]
+		for lane in choices:
+			if str(lane[3]) not in ["residential","secondary","tertiary","primary","living_street"]:
+				continue
+			var edge: Vector2 = lane[1]
+			var side := edge.orthogonal() * (-1.0 if random.randf() < .5 else 1.0)
+			var at: Vector2 = lane[0] + side * (float(lane[2])+2.8)
+			if not _street_asset_clear(at,occupied):
+				continue
+			var variation: Array = STREET_RUINS[random.randi_range(0,STREET_RUINS.size()-1)]
+			if _place_ruin(variation,at):
+				_bk_add(occupied,at)
+				placed += 1
+				break
+	for p in pois:
+		if str(p["id"]) not in ["mercado","feira_central","patio_central","central","shopping_cg"]:
+			continue
+		var center := Vector2(p["x"],p["y"])
+		var instruments := ["fruit_handcart","folding_steel_table","ice_cooler","curbside_bins","street_bench","traffic_cone"]
+		for index in instruments.size():
+			var path := STREET_ART + str(instruments[index]) + ".glb"
+			if not ResourceLoader.exists(path):
+				continue
+			var height := _proto_aabb(path).size.y
+			if height <= .01:
+				continue
+			for attempt in 30:
+				var point := center + Vector2.from_angle(random.randf()*TAU) * random.randf_range(11,38)
+				if not _street_asset_clear(point,occupied):
+					continue
+				if _place_street_object(path,point,Vector2.DOWN,(.64 if instruments[index] == "traffic_cone" else 1.21)/height,false):
+					_bk_add(occupied,point)
+					placed += 1
+					break
+	print("Adereços pós-apocalípticos no mapa: ",placed)
+
+
+func _street_asset_clear(at: Vector2, occupied: Dictionary) -> bool:
+	if not _in_area(at) or _in_water(at) or _blocked(at) or _bk_near(occupied,at,3.4):
+		return false
+	var shape := _rectangle(at,Vector2.DOWN,1.55,1.50)
+	return road_clearance.is_clear(shape) and _buildings_clear(shape)
+
+
+func _place_ruin(variation: Array, at: Vector2) -> bool:
+	var path := STREET_ART + str(variation[0]) + ".png"
+	if not ResourceLoader.exists(path):
+		return false
+	var icon: Texture2D = load(path)
+	var sprite := Sprite3D.new()
+	sprite.texture = icon
+	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	sprite.pixel_size = float(variation[1]) / maxf(1.0,icon.get_height())
+	sprite.offset.y = icon.get_height()*.49
+	sprite.position = Vector3(at.x,.03,at.y)
+	add_child(sprite)
+	if float(variation[1]) > .62:
+		_index_obstacle(_rectangle(at,Vector2.DOWN,clampf(icon.get_width()*sprite.pixel_size*.72,.35,1.35),.55))
+	return true
+
+
 func _index_car(car: Dictionary) -> void:
 	var at: Vector2 = car["pos"]
 	var cell := Vector2i(floori(at.x / 50.0), floori(at.y / 50.0))
@@ -3470,6 +3667,14 @@ func _setup_survival_places() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	layer.add_child(case_label)
+	btn_case = Button.new()
+	btn_case.text = "Missão  ▾"
+	btn_case.focus_mode = Control.FOCUS_NONE
+	btn_case.pressed.connect(func():
+		objective_expanded = not objective_expanded
+		btn_case.text = "Missão  ▾" if objective_expanded else "Missão  ▸"
+		case_label.visible = objective_expanded)
+	layer.add_child(btn_case)
 	minimap = Control.new()
 	minimap.custom_minimum_size = Vector2(230, 230)
 	minimap.size = Vector2(230, 230)
@@ -3513,6 +3718,7 @@ func _build_fixed_people() -> void:
 				var distance := box.get_center().distance_squared_to(perch)
 				if distance < closest:
 					p["footprint"] = building["pts"]
+					p["height"] = building["h"]
 					closest = distance
 		_register_sign(str(p["name"]), Vector3(perch.x, 3.1, perch.y))
 

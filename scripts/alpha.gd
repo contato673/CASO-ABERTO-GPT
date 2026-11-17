@@ -168,7 +168,7 @@ func tick(delta: float) -> void:
 		outgoing = 0.0
 		var point: Vector2 = game._actor_pos()
 		socket.send_text(JSON.stringify({"kind":"pose", "x":point.x, "y":point.y, "face":game.walk_face,
-			"driving":not game.on_foot, "inside":game.in_home or game.survival.sheltered or game.survival.down or point.distance_to(game.survival.safe) < 8.0}))
+			"driving":not game.on_foot, "inside":game.in_home or game.interior.active or game.survival.sheltered or game.survival.down or point.distance_to(game.survival.safe) < 8.0}))
 	_animate_people(delta)
 
 

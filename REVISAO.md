@@ -26,3 +26,5 @@ A revisão em tela vertical também cobriu colisão a pé e de carro, busca em u
 Na Rua Barão do Rio Branco, o teste confirmou a colisão no carro estacionado e na base do poste. Também foram verificadas a janela de aparição dos sobreviventes, a aproximação hostil, o dano e a defesa do jogador.
 
 A revisão em tela vertical cobriu criação de personagem, introdução, entrada na casa, transferência para o baú, descanso, montagem e posicionamento de móveis, as 16 missões e a retomada de uma campanha antiga a partir da quarta missão. O recorte da planta do Mercadão foi verificado contra as vias. As referências da cobertura do Mercadão e dos balcões do Grande Hotel Gaspar estão nas fotografias 182 e 80 da [Revista ARCA 15](https://cdn.campogrande.ms.gov.br/portal/prod/uploads/sites/47/2021/08/revista-arca-15-2011-1629935562.pdf).
+
+Os testes em tela vertical verificaram plantas recortadas, colisões, coleta por toque, aparecimento individual de itens, tranca persistente, escadas do Grande Hotel Gaspar, ações de sofá, cama e pia e os caminhos de acesso às 20 missões. O mapa gerou 258 adereços de rua após a geração de carros.

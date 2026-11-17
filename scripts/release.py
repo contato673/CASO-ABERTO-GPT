@@ -10,12 +10,17 @@ PROJECT = ROOT / "project.godot"
 VERSION = re.compile(r'^config/version="([a-f0-9]{12})"$', re.MULTILINE)
 
 
-def prepare() -> None:
+def prepare(preserve_saves: bool = False) -> None:
     config = PROJECT.read_text(encoding="utf-8")
+    previous = VERSION.search(config)
+    save_version = re.search(r'^config/save_version="([a-f0-9]{12})"$', config, re.MULTILINE)
+    config = re.sub(r'^config/save_version="[^"]+"\n', "", config, flags=re.MULTILINE)
     version = uuid4().hex[:12]
     setting = f'config/version="{version}"'
-    if VERSION.search(config):
-        config = VERSION.sub(setting, config)
+    if preserve_saves and (save_version or previous):
+        setting += f'\nconfig/save_version="{(save_version or previous).group(1)}"'
+    if previous:
+        config = VERSION.sub(lambda _: setting, config)
     elif "config/version=" in config:
         raise ValueError("Formato inesperado em config/version")
     else:
@@ -73,11 +78,12 @@ def web(index: Path) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("prepare")
+    prepare_command = commands.add_parser("prepare")
+    prepare_command.add_argument("--preserve-saves", action="store_true")
     web_command = commands.add_parser("web")
     web_command.add_argument("index", type=Path)
     args = parser.parse_args()
     if args.command == "prepare":
-        prepare()
+        prepare(args.preserve_saves)
     else:
         web(args.index)

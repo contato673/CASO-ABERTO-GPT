@@ -68,7 +68,7 @@ const FURN := {
 }
 const TAB_NAMES := ["Avatar", "Loja", "Móveis", "Garagem", "Convidados"]
 
-var save_path := "user://casa-%s.json" % ProjectSettings.get_setting("application/config/version", "dev")
+var save_path := "user://casa-%s.json" % ProjectSettings.get_setting("application/config/save_version", ProjectSettings.get_setting("application/config/version", "dev"))
 var cfg: Dictionary = {}
 var owned: Dictionary = {}
 var inventory: Dictionary = {}

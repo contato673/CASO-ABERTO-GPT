@@ -4,12 +4,12 @@ Sobrevivência isométrica nas ruas de Campo Grande, Mato Grosso do Sul.
 
 [**Jogar no navegador ou no celular**](https://contato673.github.io/CASO-ABERTO-GPT/) · [Versão Windows](versoes/Caso-Aberto-Windows.zip) · [Capturas de teste](testes-visuais/sobrevivencia/)
 
-Na primeira abertura de cada nova publicação, crie seu sobrevivente e leia o bilhete de Bia. Cada versão começa do zero e usa seu próprio save. Ao recarregar a mesma versão, você continua de onde parou. Em um jogo novo, a história começa perto do Posto Barão, na Rua Barão do Rio Branco. A primeira missão pede um kit de primeiros socorros na Pague Menos da Rua 13 de Maio. O minimapa marca o destino. Em locais trancados, quebrar um vidro libera a busca e alerta infectados próximos.
+Em um jogo novo, crie seu sobrevivente e leia o bilhete de Bia. Esta atualização de interiores conserva o save da publicação anterior. Em um jogo novo, a história começa perto do Posto Barão, na Rua Barão do Rio Branco. A primeira missão pede um kit de primeiros socorros na Pague Menos da Rua 13 de Maio. O minimapa marca o destino. Em locais trancados, quebrar um vidro libera a busca e alerta infectados próximos.
 
 | Controle | Ação |
 | --- | --- |
 | WASD, setas ou joystick | Caminhar ou dirigir |
-| E, tocar na construção próxima ou botão de interação | Ver o estoque externo ou falar no abrigo |
+| E, tocar na construção próxima ou botão de interação | Abrir a entrada, interagir com móveis ou falar no abrigo |
 | F ou Roubar / Entrar / Descer | Assumir um carro próximo ou sair dele com o veículo parado |
 | Espaço ou mira na tela | Atacar com o equipamento disponível |
 | I ou ícone da mochila | Ver suprimentos, usar itens e trocar a arma na mão |
@@ -19,7 +19,7 @@ Saúde, fome, sede e energia afetam recuperação e movimento. A mochila tem 18 
 
 Na mochila, escolha **Equipar** ou **Guardar arma · Usar punhos**. A faca aparece no Mercadão, e a pistola e a munição podem ser encontradas no Pátio Central Shopping. Cada disparo gasta uma munição e pode atrair infectados de longe.
 
-Para vasculhar uma casa, aproxime-se da fachada e use o botão de interação. Se estiver trancada, quebrar o vidro chama a atenção dos infectados. Dentro do menu de esconderijo você pode descansar, lavar as mãos, trocar de roupa e sair por uma janela quando houver espaço livre. As roupas vêm do saque e aparecem no personagem, inclusive depois de recarregar o jogo.
+Nos interiores, o saque aparece no cenário e a mochila continua disponível. As roupas vêm do saque e aparecem no personagem, inclusive depois de recarregar o jogo.
 
 Os quadradinhos verdes no minimapa indicam carros próximos. Os encontros com sobreviventes são raros. Alguns fogem dos infectados e conversam com você, enquanto outros atacam. O minimapa mostra vias, carros e o objetivo ativo. Os infectados têm animações de caminhada e sons que vêm da posição deles na rua.
 
@@ -43,3 +43,11 @@ A versão do GitHub Pages inicia a campanha individual. O serviço do alpha abre
 No celular, o botão pontilhado abre a roda de itens. No teclado, use **Q**. As habilidades têm XP por prática e por estudo, com vantagem inicial da profissão. A fabricação mostra materiais, ferramenta, bancada e nível exigidos em cada receita. A bancada fica na casa.
 
 O arquivo `render.yaml` define o serviço com WebSocket e seu PostgreSQL. O caminho de saúde é `/health`. Em desenvolvimento local, `ALPHA_LOCAL_DEV=1` permite usar um banco isolado apontado por `ALPHA_SQLITE`. A implantação externa exige `DATABASE_URL` e os hashes de convites. Para criar outros convites, use códigos aleatórios de alta entropia e inclua apenas seus hashes SHA-256 em `ALPHA_INVITE_HASHES`. Na implantação use a mesma origem para a página, o login e o WebSocket.
+
+## Explorar edificações
+
+Aproxime-se da fachada e escolha **Entrar**. Se a porta estiver trancada, é possível quebrar o vidro. A entrada permanece aberta nas próximas visitas. Dentro do prédio, caminhe até o móvel e toque no objeto para coletar ou use **E**. A geladeira, o armário e o gabinete de remédios guardam itens diferentes. Alguns locais estão vazios. As escadas dão acesso aos pisos disponíveis, e as pias, sofás e camas têm ações ao se aproximar.
+
+O mapa usa plantas internas reutilizáveis, selecionadas pelo identificador do imóvel, com contornos e divisões por tipologia. A cidade também recebeu adereços do Urban Ruins e peças voxel de rua do HVNBNN, posicionados fora das faixas de rodagem. A distribuição dos itens respeita a categoria do edifício e o ciclo de reposição. As escolas correspondem a etiquetas existentes nos arquivos do OpenStreetMap fornecidos. O botão **Missão** recolhe ou expande o objetivo.
+
+Os sprites internos usam as animações CC0 de Hormelz e os móveis CC0 de PtDesigns. A edição de jogo inclui peças de ThirdAngle, Classroom & School, Urban Ruins e HVNBNN nos termos dos respectivos packs. Para reconstruir o export com os packs licenciados somente para uso em jogo, execute `python scripts/importar_interiores.py` com Pillow instalado e os arquivos ZIP originais em Downloads. As texturas restritas ficam em `assets/interiores_locais/` e têm alternativas internas caso os arquivos não estejam disponíveis.
