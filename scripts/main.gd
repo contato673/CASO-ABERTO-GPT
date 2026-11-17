@@ -16,13 +16,13 @@ const NPC_COUNT := 300
 const TRAFFIC_COUNT := 44
 const TREE_MAX := 4400
 const BLOCK_MAX := 7500
-const CHAR_SCALE := 0.085
+const CHAR_SCALE := 0.072
+const PEDESTRIANS := preload("res://assets/cidade/pedestres.png")
 const PED_RANGE := 320.0
 const PED_FLEE_DIST := 6.0
 const CAR_HIT_DIST := 2.4
-const SHEET_L := "res://assets/chars/char_walk_left_sheet.png"
-const SHEET_R := "res://assets/chars/char_walk_right_sheet.png"
-const LOT_MAX := 5400
+const LOT_BUDGET_WEST := 11600
+const LOT_BUDGET_EAST := 3600
 const CITY_MODELS := "res://assets/cidade/"
 const ROAD_ROUTE := preload("res://scripts/road_route.gd")
 const ROAD_CLEARANCE := preload("res://scripts/road_clearance.gd")
@@ -61,6 +61,7 @@ var city: Dictionary
 var roads: Array = []
 var pois: Array = []
 var building_polys: Array = []
+var tall_buildings: Array = []
 var npcs: Array = []
 var npc_mm: MultiMesh
 var traffic: Array = []
@@ -75,11 +76,24 @@ var bld_bk: Dictionary = {}
 var bpoly_bk: Dictionary = {}
 var tree_tpl: Dictionary = {}
 var tree_batch: Dictionary = {}
-var char_tex: Array = []
+var street_label: Label
+var sign_layer: Control
+var sign_labels: Array[Label] = []
+var city_signs: Dictionary = {}
+var street_last_pos := Vector2(INF, INF)
+var street_names: Dictionary = {}
 var aabb_cache: Dictionary = {}
 
 var car_root: Node3D
 var car_pos := Vector2.ZERO
+var on_foot := false
+var walk_pos := Vector2.ZERO
+var walker: Sprite3D
+var walk_cycle := 0.0
+var walk_face := 1
+var btn_car: Button
+var static_people: Array[Sprite3D] = []
+var street_hour := 12.0
 var car_heading := 0.0
 var car_speed := 0.0
 var blocked_t := 0.0
@@ -113,11 +127,9 @@ var lamp_head_mat: StandardMaterial3D
 var pool_mat: StandardMaterial3D
 var night_root: Node3D
 var head_glow: MeshInstance3D
-var near_npcs: Array = []
 var portrait_cache: Dictionary = {}
 var q_t := -8.0
 var slow_n := 0
-var no_npcs: Array = []
 var home: Node3D
 var in_home := false
 var street_pos := Vector2.ZERO
@@ -127,29 +139,26 @@ var street_heading := 0.0
 const SAVE_PATH := "user://casos_v2.json"
 # Marcos reais de Campo Grande (posição convertida do OpenStreetMap para o mapa do jogo)
 const LANDMARKS := [
-	{"id": "relogio14", "name": "Relógio da 14 de Julho", "model": "relogio", "x": -3644.4, "y": 1421.0, "snapDist": 24.0, "npc": "Relojoeiro Anselmo", "line": "Este é o Relógio da 14, no cruzamento da Afonso Pena com a 14 de Julho. Ele nunca atrasa. Se o da estação parou às 3h17, alguém parou de propósito."},
+	{"id": "relogio14", "name": "Relógio da 14 de Julho", "address": "Avenida Afonso Pena esquina com Rua 14 de Julho", "model": "relogio", "x": -3644.4, "y": 1421.0, "snapDist": 24.0, "npc": "Relojoeiro Anselmo", "line": "Este é o Relógio da 14, no cruzamento da Afonso Pena com a 14 de Julho. Ele nunca atrasa. Se o da estação parou às 3h17, alguém parou de propósito."},
 	{"id": "obelisco", "name": "Obelisco", "model": "obelisco", "x": -2760.6, "y": 1265.0, "snapDist": 24.0, "npc": "Guia Dalva", "line": "O Obelisco homenageia os fundadores da cidade. Daqui se vê a Afonso Pena inteira. Na madrugada um carro ficou parado aqui, de farol apagado."},
-	{"id": "morada_bais", "name": "Morada dos Baís", "model": "casarao", "clear": 24.0, "back": 15.0, "x": -3966.7, "y": 1444.0, "snapDist": 34.0, "npc": "Guardiã do casarão", "line": "A Morada dos Baís é um dos casarões mais antigos do centro. Quem guarda segredo antigo em Campo Grande acaba passando por aqui."},
 	{"id": "ary_coelho", "name": "Praça Ary Coelho", "model": "coreto", "x": -3568.6, "y": 1496.8, "snapDist": 30.0, "npc": "Vendedor de chipa", "line": "A Ary Coelho é o coração do centro. Todo mundo corta caminho por aqui, até quem não quer ser visto."},
-	{"id": "feira_central", "name": "Feira Central", "model": "feira", "clear": 24.0, "res": 27.0, "x": -3967.4, "y": 150.0, "snapDist": 40.0, "npc": "Dona Mieko, do sobá", "line": "Na Feira Central todo mundo fala depois do segundo sobá. Ontem um freguês pagou com uma nota manchada de tinta fresca."},
+	{"id": "feira_central", "name": "Feira Central", "address": "Rua 14 de Julho, 3351", "model": "feira", "clear": 24.0, "res": 27.0, "x": -3967.4, "y": 150.0, "snapDist": 40.0, "npc": "Dona Mieko, do sobá", "line": "Na Feira Central todo mundo fala depois do segundo sobá. Ontem um freguês pagou com uma nota manchada de tinta fresca."},
 	{"id": "igreja_batista", "style": "batista", "clear": 26.0, "res": 27.0, "back": 24.0, "name": "Primeira Igreja Batista", "model": "igreja", "x": -3575.6, "y": 1178.0, "snapDist": 32.0, "npc": "Zelador da igreja", "line": "O sino não tocou, mas eu ouvi passos no pátio às três da manhã. Quem era não quis ser visto."},
 	{"id": "igreja_presb", "style": "presbiteriana", "clear": 26.0, "res": 27.0, "back": 24.0, "name": "Igreja Presbiteriana", "model": "igreja", "x": -3307.5, "y": 1014.5, "snapDist": 32.0, "npc": "Organista", "line": "Ensaio aqui toda noite. Ontem alguém ficou no último banco até eu apagar as luzes e saiu sem dizer nada."},
 	{"id": "igreja_adv", "style": "adventista", "clear": 26.0, "res": 27.0, "back": 24.0, "name": "Igreja Adventista", "model": "igreja", "x": -3074.0, "y": 849.0, "snapDist": 32.0, "npc": "Diácono", "line": "A rua aqui é calma. Por isso estranhei o mesmo carro passar três vezes devagar, sem parar em lugar nenhum."},
-	{"id": "prefeitura", "name": "Prefeitura de Campo Grande", "model": "", "x": -2441.1, "y": 1128.7, "snapDist": 40.0, "npc": "Servidor do protocolo", "line": "Todo documento da cidade passa pelo protocolo. Se alguém mexeu em registro antigo, o carimbo vai contar."},
 	{"id": "catedral", "name": "Catedral N. Sra. da Abadia e Santo Antônio", "model": "igreja", "style": "catedral", "clear": 34.0, "res": 36.0, "back": 28.0, "x": -3790.0, "y": 1672.0, "snapDist": 40.0, "npc": "Sacristão da Catedral", "line": "Santo Antônio é o padroeiro de Campo Grande e protetor das coisas perdidas. Se você procura algo que sumiu, veio ao lugar certo. Ontem deixaram um embrulho aos pés da estátua."},
 	{"id": "sao_jose", "name": "Paróquia São José", "model": "igreja", "style": "saojose", "clear": 26.0, "res": 27.0, "back": 24.0, "x": -3102.0, "y": 1041.0, "snapDist": 34.0, "npc": "Dona Zilda, da secretaria", "line": "Aqui na São José todo mundo se conhece. Um rapaz de fora veio perguntar o horário em que a praça fica vazia. Achei estranho."},
 	{"id": "parque_nacoes", "name": "Parque das Nações Indígenas", "model": "portal", "res": 18.0, "back": 20.0, "x": 332.0, "y": 691.2, "mx": 329.0, "my": 664.0, "snapDist": 28.0, "npc": "Guarda-parque Jurandir", "line": "O Parque das Nações Indígenas é um dos maiores parques urbanos do país. As capivaras do lago veem tudo. De madrugada vi uma lanterna perto da margem."},
 	{"id": "bioparque", "name": "Bioparque Pantanal", "model": "bioparque", "clear": 80.0, "res": 72.0, "yaw": 0.185, "x": 615.8, "y": 556.8, "mx": 631.0, "my": 484.0, "snapDist": 32.0, "npc": "Bióloga Renata", "line": "O Bioparque é o maior aquário de água doce do mundo. Cada tanque tem registro de entrada e saída. Alguém assinou o livro com um nome que não existe."},
-	{"id": "museu_dom_bosco", "name": "Museu das Culturas Dom Bosco", "model": "", "x": 1555.4, "y": 470.7, "snapDist": 30.0, "npc": "Curador do museu", "line": "O acervo guarda peças de vários povos do Mato Grosso do Sul. Uma ficha do catálogo sumiu, e ficha não some sozinha."},
 ]
 
 const HOME_SCRIPT := preload("res://scripts/home.gd")
 const CASES := [
 	{"name": "O relógio da estação", "steps": [
-		{"kind": "talk", "poi": "Central de Investigação", "npc": "Sargento Lima", "role": "sargento", "greeting": "Delegacia. Sargento Lima.", "story": "", "obj": "Fale com o Sargento Lima na Central.", "say": "Sumiu a chave de bronze do acervo ferroviário. O relógio da sala ficou parado às 3h17. O vigia jura que foi a hora do furto. Comece pelo museu.", "clue": "Ocorrência: sumiu uma chave de bronze do acervo. O vigia apontou 3h17 como a hora do furto."},
-		{"kind": "talk", "poi": "Museu dos Trabalhadores Ferroviários", "npc": "Zelador do museu", "role": "zelador", "greeting": "Sou o zelador do museu.", "story": "", "obj": "Confira o relógio no Museu dos Trabalhadores Ferroviários.", "say": "Veja o verso do mecanismo. O ponteiro foi preso com um grampo. Às 2h40 o vigia Mauro assinou a retirada da chave e saiu com uma caixa. A restauradora deixou a sala antes da meia-noite.", "clue": "Museu: relógio travado de propósito. Mauro retirou a chave às 2h40. Elisa saiu antes da meia-noite."},
-		{"kind": "talk", "poi": "Feira Central", "npc": "Dona Mieko", "role": "feirante", "greeting": "Quer um sobá?", "story": "", "obj": "Ouça Dona Mieko na Feira Central.", "say": "Mauro deixou uma caixa no balcão às três menos cinco. Disse que o motorista do furgão viria buscar. O motorista abriu a caixa aqui mesmo. Dentro estava a chave. Ele me pediu para chamar a polícia.", "clue": "Feira: Mauro entregou a caixa às 2h55. Davi a abriu diante de Dona Mieko e pediu que ela chamasse a polícia."},
-		{"kind": "talk", "poi": "Relógio da 14 de Julho", "npc": "Relojoeiro Anselmo", "role": "relojoeiro", "greeting": "Qual relógio deu problema?", "story": "", "obj": "Compare os horários no Relógio da 14 de Julho.", "say": "Mauro me procurou ontem. Queria saber como parar um relógio antigo sem quebrá-lo. O relógio da 14 é a referência da Dona Mieko. Às 2h55 ela já estava preparando o caldo.", "clue": "Relógio da 14: Mauro pesquisou como imobilizar o ponteiro. A referência de horário da testemunha bate com a saída registrada."},
+		{"kind": "talk", "poi": "Central de Investigação", "npc": "Sargento Lima", "role": "sargento", "greeting": "Delegacia. Sargento Lima.", "story": "", "obj": "Fale com o Sargento Lima na Central.", "say": "Uma chave de bronze sumiu do acervo. O vigia Mauro diz que foi às 3h17, a hora em que o relógio parou. Temos três formas de conferir: o registro de saída no museu, a entrega da caixa na Feira Central e o relojoeiro da 14, que recebeu uma visita estranha. Compare os relatos antes de acusar alguém.", "clue": "Ocorrência: sumiu uma chave de bronze do acervo. O vigia apontou 3h17 como a hora do furto."},
+		{"kind": "talk", "poi": "Museu dos Trabalhadores Ferroviários", "npc": "Zelador do museu", "role": "zelador", "greeting": "Sou o zelador do museu.", "story": "", "obj": "Confira o relógio no Museu dos Trabalhadores Ferroviários.", "say": "O mecanismo tem um grampo, então o relógio podia ser parado de propósito. Neste livro está a assinatura de Mauro: às 2h40 ele retirou a chave para uma suposta limpeza. Elisa, a restauradora, já havia saído antes da meia-noite. O registro prova a retirada. Falta descobrir para onde a chave foi.", "clue": "Museu: relógio travado de propósito. Mauro retirou a chave às 2h40. Elisa saiu antes da meia-noite."},
+		{"kind": "talk", "poi": "Feira Central", "npc": "Dona Mieko", "role": "feirante", "greeting": "Quer um sobá?", "story": "", "obj": "Ouça Dona Mieko na Feira Central.", "say": "Eu estava preparando o caldo quando Mauro deixou a caixa no balcão. Foi às 2h55, logo depois de eu conferir o relógio. Davi veio recolher a encomenda, abriu a caixa na minha frente e achou a chave. Ele chamou a polícia e ficou esperando. A caixa já tinha chegado fechada das mãos de Mauro.", "clue": "Feira: Mauro entregou a caixa às 2h55. Davi a abriu diante de Dona Mieko e pediu que ela chamasse a polícia."},
+		{"kind": "talk", "poi": "Relógio da 14 de Julho", "npc": "Relojoeiro Anselmo", "role": "relojoeiro", "greeting": "Qual relógio deu problema?", "story": "", "obj": "Compare os horários no Relógio da 14 de Julho.", "say": "Ontem Mauro me mostrou uma foto do relógio do acervo. Quis saber como prender o ponteiro no 17 sem riscar as engrenagens. Hoje, antes de vir para cá, conferi a hora no meu rádio com Dona Mieko. Se a caixa já estava na feira às 2h55, as 3h17 do acervo eram uma hora montada.", "clue": "Relógio da 14: Mauro pesquisou como imobilizar o ponteiro. A referência de horário da testemunha bate com a saída registrada."},
 		{"kind": "accuse", "poi": "Central de Investigação", "obj": "Volte à Central e cruze as pistas no caderno [C].", "suspects": ["Elisa, a restauradora", "Davi, o motorista", "Mauro, o vigia"], "culprit": "Mauro, o vigia", "proofs": ["O motorista abriu a caixa na feira.", "A restauradora trabalhava no museu.", "Mauro retirou a chave e entregou a caixa antes das 3h17."], "proof": 2}
 	]},
 	{"name": "O bilhete da papelaria", "steps": [
@@ -258,10 +267,6 @@ var cam_focus := Vector3.ZERO
 var joy: Control
 var joy_vec := Vector2.ZERO
 var joy_active := false
-var shop_gkeys: Array = []
-const NO_GOAL := Vector2i(999999, 999999)
-var gadj: Dictionary = {}
-var gkeys: Array = []
 const WALL_COLORS := [Color(0.93, 0.88, 0.78), Color(0.75, 0.55, 0.42), Color(0.62, 0.7, 0.78), Color(0.85, 0.82, 0.7), Color(0.7, 0.78, 0.66), Color(0.9, 0.6, 0.5), Color(0.55, 0.56, 0.6), Color(0.96, 0.93, 0.84), Color(0.8, 0.7, 0.9), Color(0.95, 0.8, 0.45)]
 const ROOF_COLORS := [Color(0.6, 0.25, 0.18), Color(0.35, 0.35, 0.38), Color(0.5, 0.3, 0.2), Color(0.25, 0.3, 0.4)]
 const SHOP_TYPES := [
@@ -292,7 +297,6 @@ func _ready() -> void:
 		var lp: Dictionary = (lm as Dictionary).duplicate()
 		lp["marco"] = true
 		pois.append(lp)
-	char_tex = [load(SHEET_L), load(SHEET_R)]
 	veh_paths = _list_glb(VEHICLE_DIR, [], ["Truck", "Fire"])
 	_build_road_buckets()
 	_build_world()
@@ -322,6 +326,9 @@ func _ready() -> void:
 	if home.get_car_path() != PLAYER_CAR:
 		_swap_car(home.get_car_path())
 	_setup_case()
+	_build_fixed_people()
+	walker = _person_sprite(4)
+	walker.hide()
 	_start_music()
 	var st: Array = city["start"]
 	if st.size() >= 2:
@@ -377,6 +384,8 @@ func _process(delta: float) -> void:
 		home.btn_exit.visible = false
 	if in_home:
 		player_marker.visible = false
+		street_label.hide()
+		sign_layer.hide()
 		home.update(delta, _joy_home(joy_vec))
 		case_label.text = _case_text()
 		_update_camera(delta)
@@ -384,7 +393,10 @@ func _process(delta: float) -> void:
 		money_label.text = "R$ %d" % money
 		return
 	if not menu_open:
-		_drive(delta)
+		if on_foot:
+			_walk(delta)
+		else:
+			_drive(delta)
 	_pm(0)
 	_signals_update(delta)
 	_traffic_update(delta)
@@ -396,7 +408,13 @@ func _process(delta: float) -> void:
 	_pm(3)
 	_update_camera(delta)
 	_update_goal_arrow()
-	player_marker.visible = true
+	if street_last_pos.distance_squared_to(_actor_pos()) > 6.25:
+		street_last_pos = _actor_pos()
+		var street := _street_at(street_last_pos)
+		street_label.text = street if not street.is_empty() else "Via sem nome no mapa"
+	street_label.show()
+	_update_signs()
+	player_marker.visible = not on_foot
 	player_marker.position = cam.unproject_position(car_root.position + Vector3.UP * 0.85)
 	player_marker.queue_redraw()
 	_pm(4)
@@ -412,8 +430,10 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
-	if event.keycode == KEY_E and poi_index >= 0 and not menu_open:
-		_interact()
+	if event.keycode == KEY_E and not menu_open and not in_home:
+		_on_touch_interact()
+	elif event.keycode == KEY_F and not menu_open and not in_home:
+		_toggle_car()
 	elif event.keycode == KEY_ESCAPE and ui_panel.visible:
 		_dismiss_dialog()
 	elif event.keycode == KEY_K and sun_ref != null:
@@ -598,32 +618,24 @@ func _build_world() -> void:
 		var bb := _bbox(pts)
 		if _landmark_spot(bb.get_center()):
 			continue
-		var h := clampf(float(b["h"]), 3.0, 22.0)
+		var h := maxf(float(b["h"]), 3.0)
 		for plot in road_clearance.clip(pts):
 			if _bbox(plot).get_area() < 7.0 or Geometry2D.triangulate_polygon(plot).is_empty() or not road_clearance.is_clear(plot):
 				continue
 			_add_bpoly(plot, h)
 			_bk_add(bld_bk, _bbox(plot).get_center())
-			_city_building(bst, plot, h, i)
+			_city_building(bst, plot, h, i, str(b.get("site", "")))
+		if i % 125 == 124:
+			_add_mesh(bst, _mat(Color.WHITE, true), 0.0)
+			bst.clear()
+			bst.begin(Mesh.PRIMITIVE_TRIANGLES)
 
+	_add_mesh(bst, _mat(Color.WHITE, true), 0.0)
+	bst.clear()
 	_build_landmarks()
 	_place_investigation_hq()
-	_fill_lots(bst)
-	_add_mesh(bst, _mat(Color.WHITE, true), 0.0)
+	_fill_lots()
 
-	# marcos dos pontos de interesse
-	for p in pois:
-		if not p.has("marco") and str(p["id"]) not in ["central", "museu"]:
-			continue
-		var lbl := Label3D.new()
-		lbl.text = str(p["name"])
-		lbl.font_size = 48
-		lbl.pixel_size = 0.016
-		lbl.visibility_range_end = 125.0
-		lbl.position = Vector3(float(p.get("mx", p["x"])), (13.0 if p.has("marco") else 8.0), float(p.get("my", p["y"])))
-		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		lbl.outline_size = 10
-		add_child(lbl)
 	_make_shops()
 
 
@@ -886,6 +898,7 @@ func _daynight_tick(delta: float) -> void:
 	dn_home = in_home
 	# Campo Grande/MS: UTC-4 o ano todo
 	var h := fposmod((Time.get_unix_time_from_system() - 4.0 * 3600.0) / 3600.0 + time_shift, 24.0)
+	street_hour = h
 	var d := 1.0
 	if h < 4.75 or h >= 19.0:
 		d = 0.0
@@ -901,11 +914,11 @@ func _daynight_tick(delta: float) -> void:
 		var day_c := Color(1.0, 0.96, 0.88)
 		sun_ref.light_color = night_c.lerp(dusk_c, dl * 2.0) if dl < 0.5 else dusk_c.lerp(day_c, (dl - 0.5) * 2.0)
 		sun_ref.light_energy = lerpf(0.18, 0.52, dl)
-		sun_ref.rotation_degrees = Vector3(lerpf(-32.0, -55.0, dl), 35.0, 0.0)
+		sun_ref.rotation_degrees = Vector3(lerpf(-68.0, -58.0, dl), 35.0, 0.0)
 	if env_ref != null:
 		env_ref.background_color = Color(0.02, 0.03, 0.08).lerp(Color(0.55, 0.75, 0.85), dl)
 		env_ref.ambient_light_color = Color(0.57, 0.64, 0.84).lerp(Color(0.93, 0.88, 0.84), dl)
-		env_ref.ambient_light_energy = lerpf(0.40, 0.51, dl)
+		env_ref.ambient_light_energy = lerpf(0.49, 0.54, dl)
 	if lamp_head_mat != null:
 		lamp_head_mat.emission_enabled = d < 0.6
 	if night_root != null:
@@ -1014,7 +1027,7 @@ func _build_road_buckets() -> void:
 				var key := Vector2i(floori(sp.x / 50.0), floori(sp.y / 50.0))
 				if not rd_bk.has(key):
 					rd_bk[key] = []
-				rd_bk[key].append([sp, (b - a).normalized(), float(ROAD_W.get(str(r["k"]), 5.0)) * 0.5 + (0.4 if str(r["k"]) in ["service", "footway"] else 2.0), str(r["k"])])
+				rd_bk[key].append([sp, (b - a).normalized(), float(ROAD_W.get(str(r["k"]), 5.0)) * 0.5 + (0.4 if str(r["k"]) in ["service", "footway"] else 2.0), str(r["k"]), str(r.get("n", "")), a, b])
 
 
 # canteiro central: ponto com pista de avenida dos dois lados (não pode receber prédio)
@@ -1070,6 +1083,8 @@ func _add_bpoly(pts: PackedVector2Array, h: float) -> void:
 	var bb := _bbox(pts)
 	var entry := {"pts": pts, "bb": bb, "h": h}
 	building_polys.append(entry)
+	if h > 22.0:
+		tall_buildings.append(entry)
 	var k0 := Vector2i(floori(bb.position.x / 50.0), floori(bb.position.y / 50.0))
 	var k1 := Vector2i(floori(bb.end.x / 50.0), floori(bb.end.y / 50.0))
 	for kx in range(k0.x, k1.x + 1):
@@ -1103,7 +1118,7 @@ func _ribbon(st: SurfaceTool, pts: Array, wd: float) -> void:
 		_v(st, a - p, 0.0); _v(st, b - p, 0.0); _v(st, b + p, 0.0)
 
 
-func _walls(st: SurfaceTool, pts: PackedVector2Array, h: float, c: Color) -> void:
+func _walls(st: SurfaceTool, pts: PackedVector2Array, h: float, c: Color, bottom := -0.14) -> void:
 	var n := pts.size()
 	for k in range(n):
 		var a := pts[k]
@@ -1112,10 +1127,10 @@ func _walls(st: SurfaceTool, pts: PackedVector2Array, h: float, c: Color) -> voi
 		if d.length() < 0.01:
 			continue
 		var nrm := Vector3(d.y, 0.0, -d.x).normalized()
-		_bv(st, a.x, 0.0, a.y, nrm, c)
-		_bv(st, b.x, 0.0, b.y, nrm, c)
+		_bv(st, a.x, bottom, a.y, nrm, c)
+		_bv(st, b.x, bottom, b.y, nrm, c)
 		_bv(st, b.x, h, b.y, nrm, c)
-		_bv(st, a.x, 0.0, a.y, nrm, c)
+		_bv(st, a.x, bottom, a.y, nrm, c)
 		_bv(st, b.x, h, b.y, nrm, c)
 		_bv(st, a.x, h, a.y, nrm, c)
 
@@ -1295,6 +1310,72 @@ func _detective_car_mesh(paint: Color) -> ArrayMesh:
 		_box_c(st, Vector3(x, 0.89, -2.11), Vector3(0.30, 0.18, 0.12), Color("#fa645d"), 0.0)
 		_box_c(st, Vector3(x * 1.03, 1.28, -0.16), Vector3(0.09, 0.52, 0.10), paint, 0.0)
 	return st.commit()
+
+
+func _actor_pos() -> Vector2:
+	return walk_pos if on_foot else car_pos
+
+
+func _person_sprite(variant: int) -> Sprite3D:
+	var sprite := Sprite3D.new()
+	sprite.texture = PEDESTRIANS
+	sprite.region_enabled = true
+	sprite.region_rect = Rect2(0, (variant * 2 + 1) * 40, 32, 40)
+	sprite.pixel_size = CHAR_SCALE
+	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	sprite.offset = Vector2(0, 19)
+	add_child(sprite)
+	return sprite
+
+
+func _toggle_car() -> void:
+	if in_home or menu_open:
+		return
+	if on_foot:
+		if walk_pos.distance_to(car_pos) > 4.2:
+			return
+		on_foot = false
+		walker.hide()
+	else:
+		if absf(car_speed) > 2.0:
+			return
+		var normal := Vector2(cos(car_heading), sin(car_heading)).orthogonal()
+		for side in [1.0, -1.0]:
+			var door: Vector2 = car_pos + normal * (float(side) * 1.85)
+			if not _blocked(door) and not _in_water(door):
+				on_foot = true
+				walk_pos = door
+				walker.position = Vector3(door.x, 0.04, door.y)
+				walker.show()
+				break
+	car_speed = 0.0
+	route_target = ""
+	_dismiss_dialog()
+	street_last_pos = Vector2(INF, INF)
+
+
+func _walk(delta: float) -> void:
+	var keyboard := Vector2(
+		float(Input.is_physical_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT)),
+		float(Input.is_physical_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP))
+	)
+	var screen := (keyboard + joy_vec).limit_length()
+	var right := cam.global_basis.x
+	var forward := cam.global_basis.z
+	var dir := Vector2(right.x, right.z) * screen.x + Vector2(forward.x, forward.z).normalized() * screen.y
+	var move := dir * delta * 5.2
+	for part in [Vector2(move.x, 0.0), Vector2(0.0, move.y)]:
+		var next: Vector2 = walk_pos + part
+		if not _blocked(next) and not _in_water(next):
+			walk_pos = next
+	walker.position = Vector3(walk_pos.x, 0.04, walk_pos.y)
+	if absf(screen.x) > 0.08:
+		walk_face = 0 if screen.x < 0.0 else 1
+	walk_cycle += delta * 7.0
+	var frame := int(walk_cycle) % 4 if screen.length_squared() > 0.03 else 0
+	walker.region_rect = Rect2(frame * 32, (8 + walk_face) * 40, 32, 40)
 
 
 func _drive(delta: float) -> void:
@@ -1478,7 +1559,7 @@ func _swap_car(path: String) -> void:
 
 
 func _enter_home() -> void:
-	if in_home or menu_open:
+	if in_home or menu_open or on_foot:
 		return
 	street_pos = car_pos
 	street_heading = car_heading
@@ -1531,11 +1612,20 @@ func _update_camera(delta: float) -> void:
 		cam.position = cam_focus + Vector3(12.0, 9.8, 12.0)
 		cam.look_at(cam_focus, Vector3.UP)
 		return
-	var target := car_root.position
+	var target := walker.position if on_foot else car_root.position
 	var k := 1.0 - exp(-delta * 5.0)
 	cam_focus = cam_focus.lerp(target, k)
 	var aspect := get_viewport().get_visible_rect().size.aspect()
-	cam.size = maxf(STREET_VIEW, 24.0 / maxf(aspect, 0.1))
+	var street_size := maxf(28.0 if on_foot else STREET_VIEW, 24.0 / maxf(aspect, 0.1))
+	var closest_tower := 0.0
+	for tower in tall_buildings:
+		var footprint: Rect2 = tower["bb"]
+		var center := footprint.get_center()
+		var edge_distance := center.distance_to(car_pos) - footprint.size.length() * 0.5
+		if edge_distance < 23.0:
+			closest_tower = maxf(closest_tower, float(tower["h"]) * (1.0 - clampf(edge_distance / 23.0, 0.0, 1.0)))
+	var expanded := street_size + clampf((closest_tower - 16.0) * 0.46, 0.0, 20.0)
+	cam.size = lerpf(cam.size, expanded, 1.0 - exp(-delta * 5.0))
 	cam.position = cam_focus + Vector3(-31.0, 74.0, -31.0)
 	cam.look_at(cam_focus, Vector3.UP)
 
@@ -1610,216 +1700,128 @@ func _traffic_update(delta: float) -> void:
 
 # ---------- pedestres (300) ----------
 
-func _gkey(p: Vector2) -> Vector2i:
-	return Vector2i(roundi(p.x * 2.0), roundi(p.y * 2.0))
-
-
-func _gadd(k: Vector2i, p: Vector2, nk: Vector2i, hw: float) -> void:
-	if not gadj.has(k):
-		gadj[k] = {"p": p, "nb": {}}
-	gadj[k]["nb"][nk] = hw
-
-
-func _build_graph() -> void:
-	# grafo das ruas: cada cruzamento é um nó; a calçada fica a meia rua mais 1,2 m do eixo
-	for r in roads:
-		var kind: String = r["k"]
-		if kind == "motorway" or kind == "trunk":
-			continue
-		var hw: float = float(ROAD_W.get(kind, 5.0)) * 0.5 + 1.2
-		var rp: Array = r["p"]
-		for k in range(rp.size() - 1):
-			var a := Vector2(float(rp[k][0]), float(rp[k][1]))
-			var b := Vector2(float(rp[k + 1][0]), float(rp[k + 1][1]))
-			if (b - a).length() < 0.5:
-				continue
-			var ka := _gkey(a)
-			var kb := _gkey(b)
-			_gadd(ka, a, kb, hw)
-			_gadd(kb, b, ka, hw)
-	gkeys = gadj.keys()
-
-
-func _pick_next(cur: Vector2i, prev: Vector2i, goal: Vector2i = NO_GOAL) -> Vector2i:
-	# próximo cruzamento: nunca volta pelo mesmo caminho, a menos que seja beco sem saída
-	# com destino: tende ao cruzamento mais próximo do destino
-	var nbs: Dictionary = gadj[cur]["nb"]
-	var opts: Array = []
-	for kk in nbs.keys():
-		if kk != prev:
-			opts.append(kk)
-	if opts.is_empty():
-		return prev
-	if goal != NO_GOAL and gadj.has(goal) and randf() < 0.75:
-		var gp: Vector2 = gadj[goal]["p"]
-		var best: Vector2i = opts[0]
-		var bd := 1e18
-		for kk in opts:
-			var d: float = (gadj[kk]["p"] as Vector2).distance_squared_to(gp)
-			if d < bd:
-				bd = d
-				best = kk
-		return best
-	return opts[randi() % opts.size()]
-
-
-func _shop_goal_keys() -> Array:
-	var out: Array = []
-	var cnt := 0
-	for p in pois:
-		if cnt >= 30:
-			break
-		if not str(p["id"]).begins_with("shop_"):
-			continue
-		cnt += 1
-		out.append(_nearest_gkey(Vector2(float(p["x"]), float(p["y"]))))
-	return out
-
-
-func _nearest_gkey(q: Vector2) -> Vector2i:
-	var best: Vector2i = gkeys[0]
-	var bd := 1e18
-	for k in gkeys:
-		var d: float = (gadj[k]["p"] as Vector2).distance_squared_to(q)
-		if d < bd:
-			bd = d
-			best = k
-	return best
-
-
-func _new_goal() -> Vector2i:
-	if not shop_gkeys.is_empty() and randf() < 0.6:
-		return shop_gkeys[randi() % shop_gkeys.size()]
-	return gkeys[randi() % gkeys.size()]
-
-
-func _random_gkey_near_car() -> Vector2i:
-	for tries in range(60):
-		var k: Vector2i = gkeys[randi() % gkeys.size()]
-		var d: float = (gadj[k]["p"] as Vector2).distance_to(car_pos)
-		if d > 60.0 and d < PED_RANGE:
-			return k
-	return gkeys[randi() % gkeys.size()]
-
-
 func _build_npcs() -> void:
-	_build_graph()
-	if gkeys.is_empty():
+	var paths: Array = []
+	var downtown: Array = []
+	var central := Vector2(-3274.0, 1196.0)
+	for road in roads:
+		var street := str(road.get("n", ""))
+		if street.is_empty() or str(road["k"]) in ["motorway", "trunk", "pedestrian"]:
+			continue
+		var pts: Array = road["p"]
+		for k in range(pts.size() - 1):
+			var a := Vector2(float(pts[k][0]), float(pts[k][1]))
+			var b := Vector2(float(pts[k+1][0]), float(pts[k+1][1]))
+			var length := a.distance_to(b)
+			if length < 17.0 or length > 220.0:
+				continue
+			var span := [a, b, street, float(ROAD_W.get(road["k"], 5.0)) * 0.5 + 1.2]
+			paths.append(span)
+			if a.lerp(b, 0.5).distance_to(central) < 320.0:
+				downtown.append(span)
+	if paths.is_empty():
 		return
-	shop_gkeys = _shop_goal_keys()
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 2026
+	var names := ["Ana", "Bruno", "Cida", "Daniel", "Elisa", "Fábio", "Glória", "Hugo", "Iara", "João", "Karina", "Lucas", "Marta", "Nilo", "Olívia", "Paulo", "Rita", "Sílvio", "Tânia", "Vítor"]
+	var surnames := ["Alves", "Barros", "Campos", "Dias", "Freitas", "Gomes", "Lima", "Machado", "Moraes", "Nunes", "Oliveira", "Pereira", "Rocha", "Silva", "Souza"]
+	var roles := [
+		["padeiro", 5.0, 14.0, "Aprendi a fazer pão com minha avó. Entro cedo para o bairro acordar com pão quente."],
+		["técnico de enfermagem", 19.0, 7.0, "Trabalho no plantão da noite. Antes de entrar, passo na rua de casa para ligar para a minha mãe."],
+		["costureira", 9.0, 18.0, "Conserto uniformes e faço bainhas para quem mora por aqui. Costumo sair para buscar material no meio do expediente."],
+		["entregador", 11.0, 20.0, "Faço entregas a pé neste trecho. Aprendi a reconhecer os endereços pelos toldos."],
+		["professora", 7.0, 16.0, "Dou aula de história e gosto de levar os alunos para conhecer os prédios antigos da cidade."],
+		["vigilante", 21.0, 6.0, "Trabalho à noite e volto antes de o comércio abrir. No caminho anoto quais postes estão apagados."],
+		["zeladora", 6.0, 15.0, "Cuido dos prédios desta quadra. Conheço o horário em que cada loja levanta a porta."],
+		["livreiro", 10.0, 19.0, "Trabalho com livros usados. Sempre reservo as histórias sobre Campo Grande para a prateleira da entrada."]
+	]
+	var memories := [
+		"Na infância, atravessava o centro com meu avô para ver os trens.",
+		"Aprendi a pedalar nestas quadras antes de começar a trabalhar.",
+		"Minha família morava longe. Fiz os primeiros amigos esperando o ônibus aqui.",
+		"Antigamente, eu vinha ao centro com uma lista de compras escrita à mão.",
+		"Meu primeiro serviço foi ajudar a abrir a loja de um vizinho.",
+		"Guardo um álbum de fotos das fachadas que mudaram desde que cheguei.",
+		"Comecei a andar por aqui quando precisei acompanhar minha irmã à escola.",
+		"Conheci meus vizinhos na fila do pão. Hoje todos me chamam pelo nome.",
+		"Quando cheguei, me orientava pelo som dos ônibus nas avenidas."
+	]
 	for i in NPC_COUNT:
-		var k: Vector2i = gkeys[rng.randi() % gkeys.size()]
-		var p0: Vector2 = gadj[k]["p"]
-		var spr := Sprite3D.new()
-		spr.texture = char_tex[0]
-		spr.region_enabled = true
-		spr.region_rect = Rect2(0, 0, 32, 32)
-		spr.pixel_size = CHAR_SCALE
-		spr.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-		spr.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
-		spr.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
-		spr.modulate = Color.from_hsv(rng.randf(), 0.35, 1.0)
-		spr.offset = Vector2(0, 16)
-		spr.position = Vector3(p0.x, 0.0, p0.y)
-		add_child(spr)
-		var nx := _pick_next(k, k)
-		npcs.append({
-			"pos": p0, "cur": k, "prev": k, "nxt": nx, "goal": _new_goal(),
-			"hw": float(gadj[k]["nb"].get(nx, 2.2)),
-			"sd": (1.0 if rng.randf() < 0.5 else -1.0),
-			"speed": rng.randf_range(0.9, 1.9),
-			"node": spr, "t": rng.randf() * 8.0, "face": -1,
-			"wait": rng.randf_range(0.0, 4.0)
-		})
-	print("pedestres: ", npcs.size())
+		var pool := downtown if i < 36 and not downtown.is_empty() else paths
+		var span: Array = pool[(i * 61 + int(float(i) / 3.0)) % pool.size()]
+		var a: Vector2 = span[0]
+		var b: Vector2 = span[1]
+		var side := a.direction_to(b).orthogonal() * float(span[3]) * (1.0 if i % 2 == 0 else -1.0)
+		var role: Array = roles[i % roles.size()]
+		var name: String = names[i % names.size()] + " " + surnames[int(float(i) / float(names.size())) % surnames.size()]
+		var sprite := _person_sprite(i % 6)
+		var origin := a.lerp(b, 0.10) + side
+		var office := a.lerp(b, 0.88) + side
+		var routine_offset := float(i % 5) * 0.075
+		var memory: String = memories[(i * 7 + int(float(i) / roles.size())) % memories.size()]
+		var story := "%s %s Hoje meu trajeto passa por %s." % [memory, role[3], span[2]]
+		npcs.append({"name": name, "job": role[0], "start": float(role[1]) + routine_offset,
+			"end": float(role[2]) + routine_offset, "story": story,
+			"street": span[2], "home": origin, "work": office, "pos": origin, "node": sprite,
+			"variant": i % 6, "phase": "em casa", "stride": float(i % 4)})
+	_npc_update(0.0)
+	print("pedestres com rotina: ", npcs.size())
 
 
 func _npc_update(delta: float) -> void:
-	near_npcs.clear()
-	for i in npcs.size():
-		if (npcs[i]["pos"] as Vector2).distance_to(car_pos) < 60.0:
-			near_npcs.append(i)
-	for i in npcs.size():
-		var n: Dictionary = npcs[i]
+	var right := cam.global_basis.x
+	for n in npcs:
+		var begin: float = n["start"]
+		var office_hours := fposmod(float(n["end"]) - begin, 24.0)
+		var shift := fposmod(street_hour - begin, 24.0)
+		var origin: Vector2 = n["home"]
+		var office: Vector2 = n["work"]
+		var target := origin
+		var phase := "em casa"
+		if shift < office_hours:
+			target = office
+			phase = "no trabalho"
+			# Mid-shift errands take place along the same street.
+			if absf(shift - office_hours * 0.5) < 0.32:
+				target = origin.lerp(office, 0.58)
+				phase = "no intervalo"
+		elif shift > 23.65:
+			target = office
+			phase = "a caminho do trabalho"
+		elif shift < office_hours + 0.35:
+			phase = "voltando para casa"
+		n["phase"] = phase
 		var pos: Vector2 = n["pos"]
-		var spr: Sprite3D = n["node"]
-		var dcar := pos.distance_to(car_pos)
-
-		# longe do jogador: reaparece num cruzamento perto dele
-		if dcar > PED_RANGE:
-			var k := _random_gkey_near_car()
-			var p0: Vector2 = gadj[k]["p"]
-			n["cur"] = k
-			n["prev"] = k
-			n["nxt"] = _pick_next(k, k, n["goal"])
-			n["hw"] = float(gadj[k]["nb"].get(n["nxt"], 2.2))
-			n["pos"] = p0
-			spr.position = Vector3(p0.x, 0.0, p0.y)
-			continue
-
-		# carro se aproximando: sai do caminho
-		if dcar < PED_FLEE_DIST:
-			var away := (pos - car_pos).normalized()
-			pos += away * 2.2 * delta
-			n["pos"] = pos
-			spr.position = Vector3(pos.x, 0.0, pos.y)
-			continue
-
-		# parado: espera no cruzamento, conversa, olha
-		if float(n["wait"]) > 0.0:
-			n["wait"] = float(n["wait"]) - delta
-			spr.region_rect = Rect2(0.0, 0.0, 32.0, 32.0)
-			spr.offset = Vector2(0, 16)
-			spr.scale = Vector3.ONE
-			continue
-
-		# separação: não encosta em outro pedestre
-		var push := Vector2.ZERO
-		for j in (near_npcs if dcar < 60.0 else no_npcs):
-			if j == i:
-				continue
-			var dv: Vector2 = pos - npcs[j]["pos"]
-			var L := dv.length()
-			if L < 1.6 and L > 0.001:
-				push += dv / L * (1.6 - L)
-
-		var cur_p: Vector2 = gadj[n["cur"]]["p"]
-		var nxt_k: Vector2i = n["nxt"]
-		var np: Vector2 = gadj[nxt_k]["p"]
-		var seg := np - cur_p
-		var perp := Vector2(-seg.y, seg.x).normalized() if seg.length() > 0.01 else Vector2.ZERO
-		var target := np + perp * float(n["sd"]) * float(n["hw"])
-		var to := target - pos
-		var step: float = float(n["speed"]) * delta
-		if to.length() <= step:
+		var sprite: Sprite3D = n["node"]
+		if delta == 0.0:
 			pos = target
-			n["prev"] = n["cur"]
-			n["cur"] = nxt_k
-			if nxt_k == n["goal"] or randf() < 0.01:
-				n["goal"] = _new_goal()
-				n["wait"] = randf_range(2.0, 6.0)
-			var nb2 := _pick_next(nxt_k, n["prev"], n["goal"])
-			n["nxt"] = nb2
-			n["hw"] = float(gadj[nxt_k]["nb"].get(nb2, 2.2))
-			var deg: int = gadj[nxt_k]["nb"].size()
-			if deg >= 3 and randf() < 0.35:
-				n["wait"] = randf_range(1.5, 5.0)
+		var active := pos.distance_squared_to(_actor_pos()) < PED_RANGE * PED_RANGE
+		sprite.visible = active
+		var movement := target - pos
+		if active and movement.length_squared() > 0.04:
+			var next := pos.move_toward(target, delta * 1.55)
+			if not _blocked(next):
+				pos = next
+			n["stride"] = fposmod(float(n["stride"]) + delta * 6.0, 4.0)
 		else:
-			pos += to.normalized() * step
-		pos += push * delta * 1.5
+			n["stride"] = 0.0
+			if not active:
+				pos = target
 		n["pos"] = pos
-		n["t"] = float(n["t"]) + delta * 6.0 * float(n["speed"])
-		spr.position = Vector3(pos.x, 0.0, pos.y)
-		var face := 0 if to.x < 0.0 else 1
-		if face != int(n["face"]):
-			n["face"] = face
-			spr.texture = char_tex[face]
-		spr.region_rect = Rect2(float(int(n["t"]) % 8) * 32.0, 0.0, 32.0, 32.0)
-		var ph: float = float(n["t"]) * PI * 0.25
-		spr.offset = Vector2(sin(ph) * 1.1, 16.0 + absf(sin(ph)) * 2.6)
-		spr.scale = Vector3(1.0 + 0.04 * absf(cos(ph)), 1.0 - 0.04 * absf(cos(ph)), 1.0)
+		sprite.position = Vector3(pos.x, 0.04, pos.y)
+		var face := 0 if Vector3(movement.x, 0.0, movement.y).dot(right) < 0.0 else 1
+		sprite.region_rect = Rect2(int(n["stride"]) * 32, (int(n["variant"]) * 2 + face) * 40, 32, 40)
+
+
+func _nearby_citizen() -> Dictionary:
+	if not on_foot:
+		return {}
+	var best := 3.6
+	var found: Dictionary = {}
+	for n in npcs:
+		var distance := walk_pos.distance_to(n["pos"])
+		if distance < best:
+			best = distance
+			found = n
+	return found
 
 
 # ---------- ponto de interesse e diálogo ----------
@@ -1833,8 +1835,10 @@ func _update_poi() -> void:
 	for i in pois.size():
 		var p: Dictionary = pois[i]
 		var pos := Vector2(float(p.get("access_x", p["x"])), float(p.get("access_y", p["y"])))
-		var d := car_pos.distance_to(pos)
-		var radius := float(p.get("access_radius", p.get("snapDist", 25.0)))
+		if on_foot:
+			pos = p.get("npc_pos", pos)
+		var d := _actor_pos().distance_to(pos)
+		var radius := 5.2 if on_foot else float(p.get("access_radius", p.get("snapDist", 25.0)))
 		if d > radius:
 			continue
 		if str(p["id"]) == target:
@@ -1848,10 +1852,13 @@ func _update_poi() -> void:
 func _update_dialog(delta: float) -> void:
 	if absf(car_speed) > 2.0 and not menu_open and ui_panel.visible:
 		_dismiss_dialog()
+	var citizen := {} if poi_index >= 0 else _nearby_citizen()
 	if poi_index >= 0:
 		prompt_label.text = "[E] " + str(pois[poi_index]["name"])
+	elif not citizen.is_empty():
+		prompt_label.text = "[E] " + str(citizen["name"])
 	prompt_label.position.y = case_label.position.y + case_label.size.y + 6.0
-	prompt_label.visible = poi_index >= 0 and not menu_open and not ph
+	prompt_label.visible = (poi_index >= 0 or not citizen.is_empty()) and not menu_open and not ph
 	if typed < full_line.length():
 		typed += TYPE_SPEED * delta
 		ui_text.text = full_line.substr(0, int(typed))
@@ -2033,7 +2040,7 @@ func _intro_story() -> void:
 	t.add_theme_color_override("font_color", Color(0.92, 0.76, 0.42))
 	vb.add_child(t)
 	var tx := Label.new()
-	tx.text = "Hoje é o seu primeiro dia na Central de Investigação, %s.\n\nO Sargento Lima já está esperando por você. Dirija até o ponto dourado no minimapa. Pressione E ao chegar e C para abrir seu caderno." % nm
+	tx.text = "Hoje é o seu primeiro dia na Central de Investigação, %s.\n\nO Sargento Lima já está esperando por você. Dirija até o ponto dourado no minimapa. Pare na Central. Use Descer ou F para caminhar, o botão de conversa ou E para falar e C para abrir o caderno." % nm
 	tx.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tx.custom_minimum_size = Vector2(300, 0)
 	tx.add_theme_font_size_override("font_size", 24)
@@ -2069,6 +2076,11 @@ func _build_touch_ui() -> void:
 	layer.add_child(btn_talk)
 	btn_book = _icon_btn("book", _on_touch_notebook)
 	layer.add_child(btn_book)
+	btn_car = Button.new()
+	btn_car.focus_mode = Control.FOCUS_NONE
+	btn_car.custom_minimum_size = Vector2(120, 52)
+	btn_car.pressed.connect(_toggle_car)
+	layer.add_child(btn_car)
 
 
 func _icon_btn(kind: String, cb: Callable) -> Button:
@@ -2144,8 +2156,10 @@ func _label_bg(l: Label, pad_x: float, pad_y: float) -> void:
 func _touch_vis() -> void:
 	if btn_talk == null:
 		return
-	home.btn_enter.visible = not in_home and not ui_panel.visible
-	btn_talk.visible = ph and not ui_panel.visible and poi_index >= 0 and not menu_open and not in_home
+	home.btn_enter.visible = not in_home and not on_foot and not ui_panel.visible
+	btn_car.visible = not in_home and not menu_open and not ui_panel.visible and ((walk_pos.distance_to(car_pos) < 4.2) if on_foot else absf(car_speed) <= 2.0)
+	btn_car.text = ("Entrar" if on_foot else "Descer") + ("" if ph else " [F]")
+	btn_talk.visible = ph and not ui_panel.visible and (poi_index >= 0 or not _nearby_citizen().is_empty()) and not menu_open and not in_home
 	btn_book.visible = ph and not in_home and not ui_panel.visible and not menu_open and intro_state == 0
 	nav_arrow.visible = minimap.visible and nav_has
 	joy.visible = ph and intro_state != 1
@@ -2180,7 +2194,11 @@ func _layout_ui() -> void:
 	clock_label.add_theme_font_size_override("font_size", 24 if ph else 20)
 	_label_bg(clock_label, 10, 6)
 	var cw := minf(580.0, vs.x - msz - m * 3.0)
-	case_label.position = Vector2(m, 66 if ph else 56)
+	street_label.position = Vector2(m, 65 if ph else 54)
+	street_label.size.x = cw
+	street_label.add_theme_font_size_override("font_size", 21 if ph else 17)
+	_label_bg(street_label, 10, 5)
+	case_label.position = Vector2(m, 106 if ph else 87)
 	case_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	case_label.custom_minimum_size = Vector2(cw, 0)
 	case_label.size = Vector2(cw, 0)
@@ -2198,6 +2216,7 @@ func _layout_ui() -> void:
 	joy.position = Vector2((vs.x - jsz) * 0.5, vs.y - jsz - 36.0)
 	joy.size = Vector2(jsz, jsz)
 	btn_book.position = Vector2(vs.x - 88.0 - 16.0, vs.y - 88.0 - 40.0)
+	btn_car.position = Vector2(14.0, vs.y - 206.0 if ph else vs.y - 62.0)
 	btn_talk.position = Vector2(vs.x - 88.0 - 16.0, vs.y - 88.0 * 2.0 - 56.0)
 	if ph:
 		ui_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -2279,8 +2298,18 @@ func _on_joy_input(ev: InputEvent) -> void:
 
 
 func _on_touch_interact() -> void:
-	if poi_index >= 0 and not menu_open:
+	if in_home or menu_open:
+		return
+	if poi_index >= 0:
 		_interact()
+		return
+	var citizen := _nearby_citizen()
+	if citizen.is_empty():
+		return
+	ui_panel.show()
+	ui_portrait.texture = _portrait_tex(str(citizen["name"]))
+	ui_name.text = "%s · %s" % [citizen["name"], citizen["job"]]
+	_say("%s\n\n%s · %s" % [citizen["story"], citizen["street"], str(citizen["phase"]).capitalize()])
 
 
 func _on_touch_notebook() -> void:
@@ -2340,6 +2369,55 @@ func _draw_player_marker() -> void:
 		player_marker.draw_polyline(points, fill, 2.0)
 
 
+func _register_sign(text: String, anchor: Vector3) -> void:
+	var cell := Vector2i(floori(anchor.x / 50.0), floori(anchor.z / 50.0))
+	if not city_signs.has(cell):
+		city_signs[cell] = []
+	city_signs[cell].append({"text": text, "anchor": anchor})
+
+
+func _update_signs() -> void:
+	var view := get_viewport().get_visible_rect().size
+	sign_layer.visible = not ui_panel.visible
+	if not sign_layer.visible:
+		return
+	var available := Rect2(Vector2(12, case_label.position.y + case_label.size.y + 42), Vector2(view.x - 24, view.y))
+	available.end.y = view.y * (0.72 if ph else 0.91)
+	var candidates := []
+	var cell := Vector2i(floori(_actor_pos().x / 50.0), floori(_actor_pos().y / 50.0))
+	for x in range(-1, 2):
+		for y in range(-1, 2):
+			for sign in city_signs.get(cell + Vector2i(x, y), []):
+				var anchor: Vector3 = sign["anchor"]
+				var d := Vector2(anchor.x, anchor.z).distance_squared_to(_actor_pos())
+				if d > 49.0 * 49.0:
+					continue
+				var screen := cam.unproject_position(anchor)
+				if available.grow_individual(65.0, 0.0, 65.0, 0.0).has_point(screen):
+					candidates.append({"d": d, "pos": screen, "text": sign["text"]})
+	candidates.sort_custom(func(a, b): return a["d"] < b["d"])
+	var occupied: Array[Rect2] = []
+	var index := 0
+	for sign in sign_labels:
+		sign.hide()
+	for item in candidates:
+		if index == sign_labels.size():
+			break
+		var sign := sign_labels[index]
+		sign.add_theme_font_size_override("font_size", 22 if ph else 18)
+		sign.text = item["text"]
+		sign.reset_size()
+		var pos: Vector2 = item["pos"] - Vector2(sign.size.x * 0.5, sign.size.y)
+		pos.x = clampf(pos.x, available.position.x, available.end.x - sign.size.x)
+		var rect := Rect2(pos, sign.size)
+		if not available.encloses(rect) or occupied.any(func(old): return old.grow(5).intersects(rect)):
+			continue
+		sign.position = rect.position
+		sign.show()
+		occupied.append(rect)
+		index += 1
+
+
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -2347,6 +2425,19 @@ func _build_ui() -> void:
 	player_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(player_marker)
 	player_marker.draw.connect(_draw_player_marker)
+	sign_layer = Control.new()
+	sign_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(sign_layer)
+	for i in 18:
+		var sign := Label.new()
+		sign.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		sign.add_theme_color_override("font_color", Color("#fff1cc"))
+		_label_bg(sign, 8, 3)
+		sign_layer.add_child(sign)
+		sign_labels.append(sign)
+	street_label = Label.new()
+	street_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	layer.add_child(street_label)
 	var credits := Label.new()
 	credits.text = "Mapa © OpenStreetMap contributors"
 	credits.add_theme_font_size_override("font_size", 12)
@@ -2429,51 +2520,67 @@ func _build_ui() -> void:
 
 # ---------- mundo preenchido: lotes com prédios nas quadras ----------
 
-func _fill_lots(st: SurfaceTool) -> void:
+func _fill_lots() -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var mat := _mat(Color.WHITE, true)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 99
 	var added := 0
+	var west_lots := 0
+	var east_lots := 0
 	for r in roads:
 		var kind: String = r["k"]
-		if kind not in ["residential", "tertiary", "secondary", "primary"]:
+		if kind not in ["residential", "tertiary", "secondary", "primary", "living_street", "service"]:
 			continue
 		var rp: Array = r["p"]
 		var wd: float = float(ROAD_W.get(kind, 5.0))
 		for k in range(rp.size() - 1):
 			var a := Vector2(float(rp[k][0]), float(rp[k][1]))
 			var b := Vector2(float(rp[k + 1][0]), float(rp[k + 1][1]))
+			if kind == "service" and not tall_buildings.any(func(tower): return (tower["bb"] as Rect2).get_center().distance_to((a + b) * 0.5) < 90.0):
+				continue
+			var eastern := (a.x + b.x) * 0.5 > -1200.0
 			var length := a.distance_to(b)
 			var dir := a.direction_to(b)
 			var nrm := dir.orthogonal()
-			var t := 7.0
-			while t < length - 7.0 and added < LOT_MAX:
-				var w := rng.randf_range(7.0, 12.0)
-				var depth := rng.randf_range(6.0, 10.0)
-				var side := 1.0 if rng.randf() < 0.5 else -1.0
-				var center := a + dir * t + nrm * side * (wd * 0.5 + depth * 0.5 + 4.0)
-				t += rng.randf_range(12.0, 19.0)
-				if not _in_area(center) or _bk_near(bld_bk, center, 9.4) or _landmark_spot(center) or _in_median(center):
-					continue
-				var u := dir * (w * 0.5)
-				var v := nrm * (depth * 0.5)
-				var pts := PackedVector2Array([center - u - v, center + u - v, center + u + v, center - u + v])
-				if not _parcel_clear(pts, center):
-					continue
-				var h := rng.randf_range(3.7, 6.3)
-				_add_bpoly(pts, h)
-				_bk_add(bld_bk, center)
-				var frontage := center - nrm * side * (depth * 0.5)
-				var step := frontage - nrm * side * 0.9
-				if road_clearance.is_clear(_rectangle(frontage - nrm * side * 1.225, nrm, 1.35, 2.45)):
-					_quad_c(st, frontage, step - nrm * side * 1.55, 1.35, 0.018, Color("#a19880"))
-				if added % 9 == 0:
-					var models := ["casa_terracota", "casa_azulada", "comercio_toldo"]
-					var path: String = CITY_MODELS + models[int(float(added) / 9.0) % models.size()] + ".glb"
-					_place_city_model(path, center, -nrm * side, Vector3(w, h, depth))
-				else:
-					_city_building(st, pts, h, added + city["buildings"].size())
-				added += 1
-	print("lotes urbanos adicionados: ", added)
+			var t := 6.8
+			while t < length - 6.5 and ((east_lots < LOT_BUDGET_EAST) if eastern else (west_lots < LOT_BUDGET_WEST)):
+				for side in [-1.0, 1.0]:
+					for row in 2:
+						if row == 1 and rng.randf() < (0.45 if eastern else 0.20):
+							continue
+						var w := rng.randf_range(7.1, 10.6)
+						var depth := rng.randf_range(6.4, 9.5)
+						var facing: Vector2 = -nrm * float(side)
+						var distance := wd * 0.5 + depth * 0.5 + 3.65 + float(row) * 10.8
+						var center := a + dir * t - facing * distance
+						if not _in_area(center) or _landmark_spot(center) or _near_mapped_place(center) or _in_median(center):
+							continue
+						var pts := _rectangle(center, facing, w, depth)
+						if not _parcel_clear(pts, center):
+							continue
+						var h := rng.randf_range(3.5, 6.7)
+						_add_bpoly(pts, h)
+						_bk_add(bld_bk, center)
+						if row == 0 and added % 13 == 0:
+							var models := ["casa_terracota", "casa_azulada", "comercio_toldo"]
+							var model: String = models[int(float(added) / 13.0) % models.size()]
+							_place_city_model(CITY_MODELS + model + ".glb", center, facing, Vector3(w, h, depth))
+						else:
+							_city_building(st, pts, h, added + city["buildings"].size())
+						added += 1
+						if added % 160 == 0:
+							_add_mesh(st, mat, 0.0)
+							st.clear()
+							st.begin(Mesh.PRIMITIVE_TRIANGLES)
+						if eastern:
+							east_lots += 1
+						else:
+							west_lots += 1
+				t += rng.randf_range(11.0, 15.0)
+	_add_mesh(st, mat, 0.0)
+	print("lotes urbanos adicionados: ", added, " (oeste: ", west_lots, ", leste: ", east_lots, ")")
 
 
 func _place_city_model(path: String, center: Vector2, facing: Vector2, size: Vector3) -> Node3D:
@@ -2486,7 +2593,7 @@ func _place_city_model(path: String, center: Vector2, facing: Vector2, size: Vec
 	if size != Vector3.ZERO:
 		model.scale = size / bounds.size
 	var off := bounds.get_center()
-	model.position = -Vector3(off.x, bounds.position.y, off.z) * model.scale
+	model.position = -Vector3(off.x, bounds.position.y, off.z) * model.scale - Vector3.UP * 0.045
 	pivot.add_child(model)
 	return pivot
 
@@ -2537,21 +2644,23 @@ func _place_investigation_hq() -> void:
 		p["access_radius"] = 17.0
 		_add_bpoly(shape, 7.5)
 		_bk_add(bld_bk, site)
-		var hq := _place_city_model(path, site, front, Vector3.ZERO)
-		var sign := Label3D.new()
-		sign.text = "POLÍCIA"
-		sign.font_size = 78
-		sign.pixel_size = 0.009
-		sign.outline_size = 1
-		sign.position = Vector3(0.0, 5.0, 3.98)
-		sign.modulate = Color("#f3dba8")
-		hq.add_child(sign)
+		_place_city_model(path, site, front, Vector3.ZERO)
 		return
+
+
+func _near_mapped_place(point: Vector2) -> bool:
+	for p in pois:
+		if p.get("real_place", false) and point.distance_squared_to(Vector2(p["x"], p["y"])) < 28.0 * 28.0:
+			return true
+	return false
 
 
 func _parcel_clear(pts: PackedVector2Array, center: Vector2) -> bool:
 	if _in_park(center) or _in_water(center) or not road_clearance.is_clear(pts):
 		return false
+	for corner in pts:
+		if _in_park(corner) or _in_water(corner):
+			return false
 	return _buildings_clear(pts)
 
 
@@ -2588,7 +2697,7 @@ func _hip_roof(st: SurfaceTool, pts: PackedVector2Array, height: float, tile: Co
 			_bv(st, q.x, q.y, q.z, n, face)
 
 
-func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: float, index: int) -> void:
+func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: float, index: int, site := "") -> void:
 	var pts := footprint
 	if Geometry2D.is_polygon_clockwise(pts):
 		pts = pts.duplicate()
@@ -2597,7 +2706,34 @@ func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: floa
 	var roofs := [Color("#804b48"), Color("#41495c"), Color("#6d555c"), Color("#95644b"), Color("#666b6c")]
 	var wall: Color = colors[index % colors.size()]
 	var roof: Color = roofs[(index * 7) % roofs.size()]
-	_walls(st, pts, height - 0.27, wall)
+	match site:
+		"heritage":
+			wall = Color("#c9ad83")
+			roof = Color("#79635a")
+		"market":
+			wall = Color("#c1a179")
+			roof = Color("#78645b")
+		"retail", "mall":
+			wall = Color("#a6a9a2")
+			roof = Color("#6d7275")
+		"gaspar":
+			wall = Color("#c9b593")
+			roof = Color("#766575")
+		"hotel":
+			wall = Color("#bc9e83")
+			roof = Color("#777575")
+		"museum", "arena":
+			wall = Color("#c2bbb0")
+			roof = Color("#8e928e")
+		"civic":
+			wall = Color("#a4a59d")
+			roof = Color("#5c7378")
+		"tower":
+			wall = Color("#acafac")
+			roof = Color("#505963")
+	var plinth_height := 0.40 if height > 9.0 else 0.25
+	_walls(st, pts, plinth_height, wall.darkened(0.28))
+	_walls(st, pts, height - 0.27, wall, plinth_height)
 	if pts.size() == 4 and height < 6.5 and index % 4 != 0:
 		_hip_roof(st, pts, height, roof)
 	else:
@@ -2617,8 +2753,20 @@ func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: floa
 		var normal := Vector3(outward.x, 0, outward.y)
 		var middle := Vector3((a.x + b.x) * 0.5, 0.0, (a.y + b.y) * 0.5)
 		_face_c(st, middle + Vector3.UP * (height - 0.135), Vector3.UP * 0.135, span * length * 0.5, roof.darkened(0.20))
-		var columns := mini(9, floori(length / 2.65))
-		var floors := mini(5, maxi(1, floori(height / 3.1)))
+		var columns := mini(17 if height > 22.0 else 6, floori(length / 2.65))
+		if site == "gaspar":
+			for balcony in range(1, 4):
+				var level := float(balcony) * height / 4.0
+				_face_c(st, middle + normal * 0.075 + Vector3.UP * level, Vector3.UP * 0.14, span * length * 0.5, wall.lightened(0.24))
+				_face_c(st, middle + normal * 0.06 + Vector3.UP * (level + 0.35), Vector3.UP * 0.045, span * length * 0.5, Color("#665965"))
+		elif site in ["museum", "arena"]:
+			_face_c(st, middle + normal * 0.05 + Vector3.UP * (height - 0.5), Vector3.UP * 0.28, span * length * 0.5, wall.lightened(0.17))
+		elif site == "heritage":
+			var cornice := wall.lightened(0.19)
+			_face_c(st, middle + normal * 0.035 + Vector3.UP * (height - 0.66), Vector3.UP * 0.15, span * length * 0.5, cornice)
+		elif site in ["market", "retail", "mall"]:
+			_face_c(st, middle + normal * 0.04 + Vector3.UP * 2.4, Vector3.UP * 0.38, span * length * 0.46, roof.darkened(0.22))
+		var floors := maxi(1, roundi(height / 3.1))
 		for col in columns:
 			var offset := (float(col + 1) / float(columns + 1) - 0.5) * length
 			for level in floors:
@@ -2627,12 +2775,15 @@ func _city_building(st: SurfaceTool, footprint: PackedVector2Array, height: floa
 				var lit := (index + col * 3 + level * 7) % 11 == 0
 				var glass := Color("#c8a067") if lit else Color("#445969")
 				_face_c(st, center, Vector3.UP * 0.56, span * 0.45, glass)
-				_face_c(st, center - Vector3.UP * 0.51 + normal * 0.018, Vector3.UP * 0.08, span * 0.56, wall.lightened(0.22))
+				if height > 6.8 or not site.is_empty():
+					_face_c(st, center - Vector3.UP * 0.51 + normal * 0.018, Vector3.UP * 0.08, span * 0.56, wall.lightened(0.22))
 
 
 func _make_shops() -> void:
 	var k := 0
 	for i in range(0, building_polys.size(), 5):
+		if k >= SHOP_TYPES.size():
+			break
 		var c: Vector2 = building_polys[i]["bb"].get_center()
 		var near_hq := false
 		for p in pois:
@@ -2682,6 +2833,57 @@ func _car_ahead(i: int, fwd: Vector2) -> bool:
 
 
 # ---------- uma casinha por quadra ----------
+
+func _access_near(point: Vector2, address: String) -> Array:
+	if address.is_empty():
+		return _road_near(point, true)
+	var name := address.split(",")[0].split(" esquina")[0].strip_edges()
+	name = name.replace("Rua Sete de Setembro", "Rua 7 de Setembro").replace("Rua Marechal Cândido Mariano Rondon", "Rua Marechal Rondon")
+	var key := Vector2i(floori(point.x / 50.0), floori(point.y / 50.0))
+	var best := 390.0
+	var result := []
+	for dx in range(-8, 9):
+		for dy in range(-8, 9):
+			for segment in rd_bk.get(key + Vector2i(dx, dy), []):
+				if str(segment[4]) != name or str(segment[3]) in ["footway", "pedestrian"]:
+					continue
+				var place := Geometry2D.get_closest_point_to_segment(point, segment[5], segment[6])
+				var distance := point.distance_to(place)
+				if distance < best:
+					best = distance
+					result = [place, segment[1]]
+	if not result.is_empty():
+		return result
+	var closest := 165.0
+	for dx in range(-4, 5):
+		for dy in range(-4, 5):
+			for segment in rd_bk.get(key + Vector2i(dx, dy), []):
+				if str(segment[3]) in ["footway", "pedestrian"]:
+					continue
+				var place := Geometry2D.get_closest_point_to_segment(point, segment[5], segment[6])
+				var distance := point.distance_to(place)
+				if distance < closest:
+					closest = distance
+					result = [place, segment[1]]
+	return result
+
+
+func _street_at(q: Vector2) -> String:
+	var best := INF
+	var label := ""
+	var key := Vector2i(floori(q.x / 50.0), floori(q.y / 50.0))
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			for segment in rd_bk.get(key + Vector2i(dx, dy), []):
+				if str(segment[3]) in ["footway", "pedestrian"]:
+					continue
+				var nearest := Geometry2D.get_closest_point_to_segment(q, segment[5], segment[6])
+				var distance := q.distance_to(nearest)
+				if distance < best and distance < float(segment[2]) + 4.0:
+					best = distance
+					label = str(segment[4]).strip_edges()
+	return label
+
 
 func _road_near(q: Vector2, drivable := false) -> Array:
 	# ponto e direção da rua mais próxima (até 60 m); vazio se não houver rua perto
@@ -2846,7 +3048,7 @@ func _setup_case() -> void:
 		var pos := Vector2(float(p["x"]), float(p["y"]))
 		if p.has("access_x"):
 			continue
-		var road := _road_near(pos, true)
+		var road := _access_near(pos, str(p["address"])) if p.get("real_place", false) else _road_near(pos, true)
 		if not road.is_empty():
 			var access: Vector2 = road[0]
 			p["access_x"] = access.x
@@ -2870,6 +3072,9 @@ func _setup_case() -> void:
 					break
 	pad_id = str(case_pois.get("Padaria do Zé", ""))
 	farm_id = str(case_pois.get("Farmácia Santa Clara", ""))
+	for loc in case_locations.values():
+		var pos := Vector2(float(loc.get("access_x", loc["x"])), float(loc.get("access_y", loc["y"])))
+		street_names[loc["id"]] = str(loc.get("address", _street_at(pos)))
 	_load_case()
 
 	case_label = Label.new()
@@ -2890,6 +3095,56 @@ func _setup_case() -> void:
 
 func _cur_steps() -> Array:
 	return CASES[case_idx]["steps"]
+
+
+func _build_fixed_people() -> void:
+	for i in pois.size():
+		var p: Dictionary = pois[i]
+		var site := Vector2(float(p["x"]), float(p["y"]))
+		var access := Vector2(float(p.get("access_x", p["x"])), float(p.get("access_y", p["y"])))
+		var towards := access.direction_to(site)
+		if towards.is_zero_approx():
+			towards = Vector2.RIGHT
+		var perch := access
+		var found := false
+		for lateral in [0.0, 3.5, -3.5, 7.0, -7.0]:
+			for distance in [4.5, 5.5, 6.5, 7.5, 9.0]:
+				var candidate := access + towards * float(distance) + towards.orthogonal() * float(lateral)
+				if not _blocked(candidate) and not _in_water(candidate) and road_clearance.is_clear(_rectangle(candidate, towards, 0.6, 0.6)):
+					perch = candidate
+					found = true
+					break
+			if found:
+				break
+		if p.get("real_place", false):
+			perch = _site_entrance(p, access, perch)
+		p["npc_pos"] = perch
+		var npc := _person_sprite(i % 6)
+		npc.position = Vector3(perch.x, 0.04, perch.y)
+		static_people.append(npc)
+		_register_sign(str(p["name"]), Vector3(perch.x, 3.1, perch.y))
+
+
+func _site_entrance(place: Dictionary, from_street: Vector2, fallback: Vector2) -> Vector2:
+	for building in city["buildings"]:
+		if str(building.get("osm_way", "")) != str(place["osm_way"]):
+			continue
+		var shape := _poly(building["p"])
+		var best := INF
+		var entrance := fallback
+		for i in shape.size():
+			var a := shape[i]
+			var b := shape[(i + 1) % shape.size()]
+			var edge := Geometry2D.get_closest_point_to_segment(from_street, a, b)
+			var normal := a.direction_to(b).orthogonal()
+			for side in [-1.0, 1.0]:
+				var candidate := edge + normal * float(side) * 2.2
+				var score := from_street.distance_squared_to(candidate)
+				if score < best and not _blocked(candidate) and not _in_water(candidate) and road_clearance.is_clear(_rectangle(candidate, normal, 0.65, 0.65)):
+					best = score
+					entrance = candidate
+		return entrance
+	return fallback
 
 
 func _first_case_leads_active() -> bool:
@@ -2920,9 +3175,15 @@ func _case_text() -> String:
 		for i in range(1, 4):
 			var place: String = steps[i]["poi"]
 			if str(case_pois.get(place, "")) not in lead_ids:
-				pending.append(place)
+				var id := str(case_pois.get(place, ""))
+				var address := str(street_names.get(id, ""))
+				pending.append(place if id != _target_id() or address.is_empty() else "%s (%s)" % [place, address])
 		return "%s · %d/3 diligências\n%s" % [CASES[0]["name"], lead_ids.size(), " • ".join(pending)]
-	return "%s\n%s" % [str(CASES[case_idx]["name"]), str(steps[case_step]["obj"])]
+	var objective := str(steps[case_step]["obj"])
+	var address := str(street_names.get(_target_id(), ""))
+	if not address.is_empty() and address != street_label.text:
+		objective += "\n" + address
+	return "%s\n%s" % [str(CASES[case_idx]["name"]), objective]
 
 
 func _target_id() -> String:
@@ -2970,6 +3231,10 @@ func _interact() -> void:
 		return
 	if id == _target_id() and not case_done:
 		_talk_case(_cur_steps()[case_step], p)
+		return
+	if p.get("real_place", false):
+		ui_name.text = str(p["name"])
+		_say(str(p["line"]))
 		return
 	_open_menu()
 
@@ -3101,7 +3366,7 @@ func _load_case() -> void:
 # ---------- minimapa: ruas, lugares e a direção do objetivo ----------
 
 func _mm_pos(p: Vector2) -> Vector2:
-	var d := p - car_pos
+	var d := p - _actor_pos()
 	return minimap.size * 0.5 + Vector2(-d.x + d.y, -(d.x + d.y)) * 0.70710678 * mm_scale
 
 
@@ -3155,6 +3420,8 @@ func _draw_minimap() -> void:
 			minimap.draw_circle(q, 5.0, Color(0.05, 0.1, 0.18))
 			minimap.draw_circle(q, 3.5, Color(0.45, 0.75, 1.0))
 	var h := Vector2(cos(car_heading), sin(car_heading))
+	if on_foot:
+		minimap.draw_circle(_mm_pos(car_pos), 4.0, Color("#ffd284"))
 	var sx := (-h.x + h.y) * 0.70710678
 	var sy := -(h.x + h.y) * 0.70710678
 	var u := Vector2(sx, sy).normalized()
@@ -4031,16 +4298,7 @@ func _shop_front(c: Vector2, footprint: PackedVector2Array, t: Dictionary) -> vo
 	root.add_child(_box_node(Vector3(4.6, 0.25, 1.8), Vector3(0.0, 3.1, 0.9), _flat_mat(t["awn"])))
 	root.add_child(_box_node(Vector3(4.0, 1.8, 0.12), Vector3(0.0, 1.4, 0.06), _glass_mat()))
 	root.add_child(_box_node(Vector3(4.4, 0.8, 0.15), Vector3(0.0, 4.1, 0.08), _flat_mat(t["sign"])))
-	var lbl := Label3D.new()
-	var txt := str(t["n"])
-	lbl.text = txt
-	lbl.font_size = 48
-	lbl.pixel_size = clampf(4.2 / (float(txt.length()) * 24.0), 0.005, 0.04)
-	lbl.outline_size = 10
-	lbl.outline_modulate = t["sign"]
-	lbl.modulate = Color(1.0, 0.97, 0.85)
-	lbl.position = Vector3(0.0, 4.1, 0.2)
-	root.add_child(lbl)
+	root.set_meta("interior", str(t["n"]))
 
 
 # ---------- seta de direcionamento até o objetivo da quest ----------
@@ -4055,15 +4313,18 @@ func _update_goal_arrow() -> void:
 				tp = Vector2(float(p.get("access_x", p["x"])), float(p.get("access_y", p["y"])))
 				found = true
 				break
-	if tid != route_target or car_pos.distance_squared_to(route_origin) > 30.0 * 30.0:
+	var here := _actor_pos()
+	if tid != route_target or here.distance_squared_to(route_origin) > 30.0 * 30.0:
 		route_target = tid
-		route_origin = car_pos
-		route_points = road_route.route(car_pos, tp) if found else PackedVector2Array()
-	while route_points.size() > 1 and car_pos.distance_to(route_points[0]) < 9.0:
+		route_origin = here
+		route_points = road_route.route(here, tp) if found and not on_foot else PackedVector2Array()
+	if on_foot:
+		route_points.clear()
+	while route_points.size() > 1 and here.distance_to(route_points[0]) < 9.0:
 		route_points.remove_at(0)
 	var next := route_points[0] if not route_points.is_empty() else tp
-	var d := next - car_pos
-	nav_has = found and tp.distance_to(car_pos) > 7.0
+	var d := next - here
+	nav_has = found and tp.distance_to(here) > 7.0
 	nav_dir = d.normalized() if nav_has else Vector2.ZERO
 
 
