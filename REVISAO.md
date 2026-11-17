@@ -22,3 +22,5 @@ Fluxo testado no Godot em tela vertical. Foram exercitados roubo e reentrada no 
 - Pacotes **Package**, **Pleasant Park Pack** e **actionVoxels** ficam disponíveis como material de origem local. Os arquivos recebidos não trouxeram condições de uso identificáveis.
 
 A revisão em tela vertical também cobriu colisão a pé e de carro, busca em uma casa, vidro quebrado, descanso, higiene, saída pela janela, persistência da roupa, fuga de um sobrevivente e quadros e reprodução sonora dos infectados. A distribuição adicionou 812 carros mantendo os IDs existentes.
+
+Na Rua Barão do Rio Branco, o teste confirmou a colisão no carro estacionado e na base do poste. Também foram verificadas a janela de aparição dos sobreviventes, a aproximação hostil, o dano e a defesa do jogador.

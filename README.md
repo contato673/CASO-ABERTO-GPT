@@ -21,7 +21,7 @@ Na mochila, escolha **Equipar** ou **Guardar arma · Usar punhos**. A faca apare
 
 Para vasculhar uma casa, aproxime-se da fachada e use o botão de interação. Se estiver trancada, quebrar o vidro chama a atenção dos infectados. Dentro do menu de esconderijo você pode descansar, lavar as mãos, trocar de roupa e sair por uma janela quando houver espaço livre. As roupas vêm do saque e aparecem no personagem, inclusive depois de recarregar o jogo.
 
-Os quadradinhos verdes no minimapa indicam carros próximos. Há oito sobreviventes com nome, profissão e história. Eles circulam perto dos seus pontos de referência e se afastam quando detectam infectados. Os infectados têm animações de caminhada e sons que vêm da posição deles na rua.
+Os quadradinhos verdes no minimapa indicam carros próximos. Os encontros com sobreviventes são raros. Alguns fogem dos infectados e conversam com você, enquanto outros atacam. O minimapa mostra vias, carros e o objetivo ativo. Os infectados têm animações de caminhada e sons que vêm da posição deles na rua.
 
 No Posto Barão, abra **Baú pessoal** a pé para guardar ou retirar até 60 itens. O conteúdo do baú é salvo no dispositivo e permanece após a derrota do personagem.
 

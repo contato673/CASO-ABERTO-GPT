@@ -90,6 +90,7 @@ var on_foot := false
 var survival = preload("res://scripts/survival.gd").new()
 var parked_vehicles: Array[Dictionary] = []
 var parked_cells: Dictionary = {}
+var obstacle_cells: Dictionary = {}
 var btn_attack: Button
 var walk_pos := Vector2.ZERO
 var walker: Sprite3D
@@ -97,7 +98,6 @@ var walker_outline: Sprite3D
 var walk_cycle := 0.0
 var walk_face := 1
 var btn_car: Button
-var static_people: Array[Sprite3D] = []
 var street_hour := 12.0
 var car_heading := 0.0
 var car_speed := 0.0
@@ -623,6 +623,8 @@ func _place_tree(pos: Vector2, height: float, rng: RandomNumberGenerator) -> voi
 	var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * scale_factor)
 	var transform := Transform3D(basis, Vector3(pos.x, 0.0, pos.y))
 	_bk_add(tree_bk, pos)
+	var trunk := clampf(height * 0.065, 0.29, 0.9)
+	_index_obstacle(_rectangle(pos, Vector2.DOWN, trunk, trunk))
 	var key := variant + "|" + str(floori(pos.x / 140.0)) + "|" + str(floori(pos.y / 140.0))
 	if not tree_batch.has(key):
 		tree_batch[key] = [[]]
@@ -1314,18 +1316,42 @@ func _walk(delta: float) -> void:
 
 func _walk_move(motion: Vector2) -> void:
 	if _walk_blocked(walk_pos):
-		walk_pos = survival.safe
+		walk_pos = _recover_walk_position(walk_pos)
 	var pieces := maxi(1, ceili(motion.length() / 0.45))
 	var step := motion / float(pieces)
 	for i in pieces:
 		for part in [Vector2(step.x, 0.0), Vector2(0.0, step.y)]:
 			var next: Vector2 = walk_pos + part
-			if not _walk_blocked(next):
+			if not _walk_blocked(next) and not _pedestrian_blocks(walk_pos, next, walker):
 				walk_pos = next
 
 
 func _walk_blocked(at: Vector2) -> bool:
-	return not _in_area(at) or _in_water(at) or _blocked(at) or not _buildings_clear(_rectangle(at, Vector2.DOWN, 0.82, 0.82))
+	return not _in_area(at) or _in_water(at) or not _ground_clear(at, _rectangle(at, Vector2.DOWN, 0.82, 0.82), false)
+
+
+func _recover_walk_position(at: Vector2) -> Vector2:
+	if at.is_finite():
+		for step in range(1, 19):
+			for direction in 12:
+				var point := at + Vector2.RIGHT.rotated(direction * TAU / 12.0) * step * 0.6
+				if not _walk_blocked(point):
+					return point
+	return survival.safe
+
+
+func _pedestrian_blocks(before: Vector2, after: Vector2, mover: Node3D) -> bool:
+	if on_foot and mover != walker and _approaches_person(before, after, walk_pos):
+		return true
+	for person in survival.survivor_group.people:
+		if person["node"] != mover and person["node"].visible and _approaches_person(before, after, person["pos"]):
+			return true
+	return false
+
+
+func _approaches_person(before: Vector2, after: Vector2, person: Vector2) -> bool:
+	var distance := after.distance_squared_to(person)
+	return distance < 0.67 * 0.67 and distance < before.distance_squared_to(person)
 
 
 func _drive(delta: float) -> void:
@@ -1391,13 +1417,58 @@ func _drive_move(motion: Vector2) -> void:
 
 
 func _car_blocked(p: Vector2) -> bool:
-	if not _in_area(p) or _in_water(p) or _blocked(p):
+	if not _in_area(p) or _in_water(p):
 		return true
-	for i in _nearby_cars(p, 2.6):
-		if i != survival.active_vehicle and p.distance_squared_to(parked_vehicles[i]["pos"]) < 6.75:
-			return true
-	var fwd := Vector2(cos(car_heading), sin(car_heading))
-	return not _buildings_clear(_rectangle(p, fwd, 1.7, CAR_LENGTH))
+	var forward := Vector2.from_angle(car_heading)
+	return not _ground_clear(p, _rectangle(p, forward, _active_car_width(), CAR_LENGTH), true)
+
+
+func _active_car_width() -> float:
+	if survival.active_vehicle >= 0:
+		return parked_vehicles[survival.active_vehicle]["width"]
+	return 1.7
+
+
+func _ground_clear(at: Vector2, shape: PackedVector2Array, driving: bool) -> bool:
+	if not _buildings_clear(shape):
+		return false
+	var bounds := _bbox(shape)
+	var low := bounds.position / 50.0
+	var high := bounds.end / 50.0
+	for x in range(floori(low.x), floori(high.x) + 1):
+		for y in range(floori(low.y), floori(high.y) + 1):
+			for obstacle in obstacle_cells.get(Vector2i(x, y), []):
+				if bounds.intersects(obstacle["bounds"]) and not Geometry2D.intersect_polygons(shape, obstacle["shape"]).is_empty():
+					return false
+	for index in _nearby_cars(at, 5.5):
+		if index == survival.active_vehicle:
+			continue
+		var info := parked_vehicles[index]
+		var point: Vector2 = info["pos"]
+		if at.distance_squared_to(point) > 5.5 * 5.5:
+			continue
+		var angle: float = info["heading"] + float(info["axis_offset"])
+		var footprint := _rectangle(point, Vector2.from_angle(angle), info["width"], CAR_LENGTH)
+		if not Geometry2D.intersect_polygons(shape, footprint).is_empty():
+			return false
+	if not driving and survival.active_vehicle >= 0 and at.distance_squared_to(car_pos) < 4.0 * 4.0:
+		var footprint := _rectangle(car_pos, Vector2.from_angle(car_heading), _active_car_width(), CAR_LENGTH)
+		if not Geometry2D.intersect_polygons(shape, footprint).is_empty():
+			return false
+	return true
+
+
+func _index_obstacle(shape: PackedVector2Array) -> void:
+	var bounds := _bbox(shape)
+	var entry := {"shape": shape, "bounds": bounds}
+	var low := bounds.position / 50.0
+	var high := bounds.end / 50.0
+	for x in range(floori(low.x), floori(high.x) + 1):
+		for y in range(floori(low.y), floori(high.y) + 1):
+			var key := Vector2i(x, y)
+			if not obstacle_cells.has(key):
+				obstacle_cells[key] = []
+			obstacle_cells[key].append(entry)
 
 
 func _unstick() -> void:
@@ -2943,8 +3014,11 @@ func _place_street_object(path: String, q: Vector2, dir: Vector2, scale_factor: 
 	if align_long_axis:
 		var facing := atan2(heading.y, heading.x)
 		parked_vehicles.append({"node":inst,"pos":q,"path":path,"basis":bas,"offset":Vector3(ctr.x,ab.position.y,ctr.z),
-			"heading":facing,"original_heading":facing,"index":parked_vehicles.size()})
+			"heading":facing,"original_heading":facing,"index":parked_vehicles.size(),
+			"width":minf(ab.size.x, ab.size.z) * scale_factor, "axis_offset":PI * 0.5 if ab.size.x > ab.size.z else 0.0})
 		_index_car(parked_vehicles[-1])
+	else:
+		_index_obstacle(shape)
 	return true
 
 
@@ -3217,10 +3291,6 @@ func _build_fixed_people() -> void:
 				if distance < closest:
 					p["footprint"] = building["pts"]
 					closest = distance
-		if str(p["id"]) == "central":
-			var npc := _person_sprite(2)
-			npc.position = Vector3(perch.x, 0.04, perch.y)
-			static_people.append(npc)
 		_register_sign(str(p["name"]), Vector3(perch.x, 3.1, perch.y))
 
 
@@ -3490,11 +3560,6 @@ func _draw_minimap() -> void:
 				q = half + dv * sc
 			minimap.draw_circle(q, 11.0 * pulse, Color(0.1, 0.08, 0.02))
 			minimap.draw_circle(q, 8.5 * pulse, Color(1.0, 0.85, 0.2))
-		elif inside and not _first_case_lead_at(pid).is_empty():
-			minimap.draw_circle(q, 6.5, Color("#edc27d"))
-		elif inside:
-			minimap.draw_circle(q, 5.0, Color(0.05, 0.1, 0.18))
-			minimap.draw_circle(q, 3.5, Color(0.45, 0.75, 1.0))
 	var h := Vector2(cos(car_heading), sin(car_heading))
 	if on_foot:
 		for index in _nearby_cars(walk_pos, 90.0):
@@ -3773,6 +3838,7 @@ func _build_markings() -> void:
 					if not road_clearance.is_clear(_rectangle(lp, sdir, 0.42, 0.42)):
 						lamp_d += 36.0
 						continue
+					_index_obstacle(_rectangle(lp, sdir, 0.28, 0.28))
 					var ly := atan2(arm.x, arm.y)
 					_box_c(sst, Vector3(lp.x, 3.2, lp.y), Vector3(0.16, 6.4, 0.16), Color(0.3, 0.31, 0.33), ly)
 					_box_c(sst, Vector3(lp.x + arm.x * 0.9, 6.3, lp.y + arm.y * 0.9), Vector3(0.12, 0.12, 1.8), Color(0.3, 0.31, 0.33), ly)
@@ -3853,6 +3919,7 @@ func _build_markings() -> void:
 				continue
 			if lights:
 				n_lights += 1
+				_index_obstacle(_rectangle(sp, dir, 0.26, 0.26))
 				_box_c(sst, Vector3(sp.x, 2.2, sp.y), Vector3(0.16, 4.4, 0.16), Color(0.2, 0.2, 0.22), yaw)
 				_box_c(sst, Vector3(sp.x, 4.3, sp.y), Vector3(0.5, 1.4, 0.5), Color(0.1, 0.1, 0.11), yaw)
 				var grp := 0 if absf(dir.dot(ref)) > 0.7 else 1
@@ -3864,6 +3931,7 @@ func _build_markings() -> void:
 					_box_c(lst[grp * 3 + li], Vector3(tp.x, 5.14, tp.y), Vector3(0.38, 0.08, 0.38), Color.WHITE, yaw)
 			elif float(ROAD_W.get(kind2, 5.0)) < maxw or (n_major == 0 and idx > 2):
 				n_signs += 1
+				_index_obstacle(_rectangle(sp, dir, 0.20, 0.20))
 				_box_c(sst, Vector3(sp.x, 1.3, sp.y), Vector3(0.1, 2.6, 0.1), Color(0.6, 0.6, 0.62), yaw)
 				_box_c(sst, Vector3(sp.x, 2.75, sp.y), Vector3(1.0, 1.0, 0.06), Color(0.92, 0.92, 0.9), yaw)
 				var fq := sp + dir * 0.04

@@ -1,5 +1,6 @@
 extends RefCounted
 
+const HOSTILE_SITES := ["correios_calogeras", "museu"]
 const PEOPLE := [
 	["central", "Lia", "Socorrista", "Trabalhava numa ambulância. Agora faço a triagem de quem consegue chegar ao Posto Barão.", "Se ouvir gritos perto da Barão, contorne pela calçada oposta. O pátio do abrigo é seguro."],
 	["mercado", "Nivaldo", "Feirante", "Vendia temperos no Mercadão. Minha irmã ficou do outro lado da cidade, então passo aqui à procura de notícias.", "Procure a faca no estoque do Mercadão. Se precisar fugir, não pare para brigar na porta."],
@@ -9,6 +10,8 @@ const PEOPLE := [
 	["shopping_cg", "Davi", "Mecânico", "Minha oficina fechou quando faltou luz. Hoje verifico os carros que ainda têm combustível.", "Guarde um galão no abrigo. Para abastecer, estacione e use o galão do lado de fora."],
 	["praca", "Márcia", "Professora", "Eu passava pela praça a caminho da escola. Agora uso o caminho aberto para enxergar infectados de longe.", "Quando eles começam a correr, procure uma esquina com saída e mantenha distância."],
 	["museu_dom_bosco", "Joel", "Técnico de manutenção", "Conheço as passagens de serviço daqui. À noite me escondo e saio quando a rua esvazia.", "Procure água nas residências. Não vale quebrar todo vidro só por curiosidade."],
+	["correios_calogeras", "Breno", "Ex-segurança", "Controlava a portaria de um depósito. Depois do apagão passou a tomar suprimentos de quem cruza a Calógeras.", ""],
+	["museu", "Marta", "Ex-transportadora", "Perdeu a carga e o carro na estação. Agora defende o que conseguiu reunir perto dos trilhos.", ""],
 ]
 
 var life: Node
@@ -54,7 +57,8 @@ func setup(survival: Node, city: Node) -> void:
 			"goal": objective, "pos": home, "node": sprite, "title": title, "skin": (i + 1) % 7,
 			"state": "patrol", "target": objective, "walk": 0.0, "face": 1,
 			"phase": i % 3, "swap_at": 4.0 + i, "calm": 0.0, "route": PackedVector2Array(),
-			"last_alarm": -20.0, "context": "survivor"})
+			"last_alarm": -20.0, "context": "survivor", "hostile": HOSTILE_SITES.has(profile[0]),
+			"slot": (i * 5 + 2) % 7, "active": false, "hp": 55.0, "strike_at": 0.0, "defeated_until": 0.0})
 
 
 func _pick_point(origin: Vector2, along: Vector2, side: Vector2, distance: float) -> Vector2:
@@ -68,7 +72,7 @@ func _pick_point(origin: Vector2, along: Vector2, side: Vector2, distance: float
 func near(point: Vector2, limit: float) -> Dictionary:
 	var found := {}
 	for person in people:
-		if person["state"] == "flee":
+		if not person["active"] or person["hostile"] or person["state"] != "patrol":
 			continue
 		var d: float = point.distance_to(person["pos"])
 		if d < limit and life._clear_line(point, person["pos"]):
@@ -77,22 +81,93 @@ func near(point: Vector2, limit: float) -> Dictionary:
 	return found
 
 
+func _encounter_window(person: Dictionary, now: float) -> bool:
+	return posmod(floori(now / 180.0), 7) == int(person["slot"])
+
+
 func tick(here: Vector2, delta: float) -> void:
 	review_in -= delta
 	var review := review_in <= 0.0
 	if review:
 		review_in = 0.45
+	var now: float = life._now()
 	for person in people:
+		var home: Vector2 = person["home"]
 		var at: Vector2 = person["pos"]
 		var sprite: Sprite3D = person["node"]
-		var distance := here.distance_squared_to(at)
-		sprite.visible = distance < 115.0 * 115.0
+		if person["active"] and here.distance_squared_to(at) > 110.0 * 110.0:
+			person["active"] = false
+		if not person["active"] and now >= float(person["defeated_until"]) and _encounter_window(person, now):
+			if here.distance_squared_to(home) <= 100.0 * 100.0:
+				at = home
+				person["active"] = true
+				person["pos"] = home
+				person["target"] = person["goal"]
+				person["route"] = PackedVector2Array()
+				person["state"] = "patrol"
+				person["hp"] = 55.0
+		sprite.visible = person["active"]
 		if not sprite.visible:
 			continue
-		person["title"].visible = distance < 19.0 * 19.0
+		var title: Label3D = person["title"]
+		title.visible = here.distance_squared_to(at) < 13.0 * 13.0
 		if review:
 			_decide(person)
+		if person["hostile"]:
+			_hostility(person, here, now)
+			title.text = person["name"] + " · Hostil" if person["state"] == "attack" else "Desconhecido"
+			title.modulate = Color("#f59c87") if person["state"] == "attack" else Color("#eacbb0")
 		_move(person, sprite, at, delta)
+
+
+func _hostility(person: Dictionary, player: Vector2, now: float) -> void:
+	if life.sheltered or life.down or not game.on_foot or player.distance_to(life.safe) < 8.0:
+		if person["state"] == "attack":
+			person["state"] = "patrol"
+			person["target"] = person["home"]
+		return
+	if person["state"] == "flee" or person["state"] == "hide":
+		return
+	var at: Vector2 = person["pos"]
+	var distance: float = at.distance_to(player)
+	if distance > (16.0 if person["state"] == "attack" else 9.0) or not life._clear_line(at, player):
+		if person["state"] == "attack":
+			person["state"] = "patrol"
+			person["target"] = person["home"]
+		return
+	if person["state"] != "attack":
+		person["strike_at"] = now + 1.1
+		life._notify("Sobrevivente hostil por perto.")
+	person["state"] = "attack"
+	person["target"] = player
+	person["route"] = PackedVector2Array()
+	if distance < 1.35 and now >= float(person["strike_at"]):
+		life.needs["saude"] = maxf(0.0, float(life.needs["saude"]) - 12.0)
+		life.dirty_hands = true
+		life._notify("O sobrevivente atacou você.")
+		person["strike_at"] = now + 1.55
+
+
+func combat_target(point: Vector2, reach: float) -> Dictionary:
+	var found := {}
+	for person in people:
+		if not person["active"] or not person["hostile"]:
+			continue
+		var distance := point.distance_to(person["pos"])
+		if distance <= reach and life._clear_line(point, person["pos"]):
+			found = person
+			reach = distance
+	return found
+
+
+func take_hit(person: Dictionary, amount: float) -> void:
+	person["hp"] = float(person["hp"]) - amount
+	person["strike_at"] = life._now() + 0.8
+	if person["hp"] <= 0.0:
+		person["active"] = false
+		person["node"].hide()
+		person["defeated_until"] = life._now() + 1800.0
+		life._notify("O sobrevivente hostil caiu.")
 
 
 func _decide(person: Dictionary) -> void:
@@ -121,6 +196,8 @@ func _decide(person: Dictionary) -> void:
 	if now < float(person["calm"]):
 		if at.distance_to(person["target"]) < 2.0:
 			person["state"] = "hide"
+		return
+	if person["state"] == "attack":
 		return
 	if person["state"] != "patrol":
 		person["state"] = "patrol"
@@ -158,14 +235,15 @@ func _move(person: Dictionary, sprite: Sprite3D, at: Vector2, delta: float) -> v
 			person["route"] = route
 		if not route.is_empty():
 			target = route[0]
-	var speed := 5.4 if person["state"] == "flee" else 2.4
+	var rushing: bool = person["state"] in ["flee", "attack"]
+	var speed := 5.4 if rushing else 2.4
 	var next := at.move_toward(target, speed * delta)
-	if person["state"] == "hide" or not life._valid_position(next):
+	if person["state"] == "hide" or not life._valid_position(next) or game._pedestrian_blocks(at, next, sprite):
 		next = at
 	var step := next - at
 	var frame := 0
 	if not step.is_zero_approx():
-		person["walk"] += delta * (11.0 if person["state"] == "flee" else 6.0)
+		person["walk"] += delta * (11.0 if rushing else 6.0)
 		frame = int(person["walk"]) % 4
 		var right: Vector3 = game.cam.global_basis.x
 		person["face"] = 0 if step.dot(Vector2(right.x, right.z)) < 0.0 else 1

@@ -125,8 +125,8 @@ func setup(city_game: Node) -> void:
 	if active_vehicle < 0:
 		game.on_foot = true
 	game.walker.visible = game.on_foot
-	if not is_finite(game.walk_pos.x) or not is_finite(game.walk_pos.y) or game._walk_blocked(game.walk_pos):
-		game.walk_pos = safe
+	if not game.walk_pos.is_finite() or game._walk_blocked(game.walk_pos):
+		game.walk_pos = game._recover_walk_position(game.walk_pos)
 	game.walker.position = Vector3(game.walk_pos.x, 0.04, game.walk_pos.y)
 	hand = Sprite3D.new()
 	hand.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
@@ -401,14 +401,14 @@ func toggle_vehicle() -> void:
 		if active_vehicle >= 0:
 			var previous: Dictionary = game.parked_vehicles[active_vehicle]
 			previous["pos"] = game.car_pos
-			previous["heading"] = game.car_heading
+			previous["heading"] = game.car_heading - float(previous["axis_offset"])
 			previous["fuel"] = fuel
 			taken[str(active_vehicle)] = _vehicle_record(previous)
 			_set_parked_pose(previous)
 			previous["node"].show()
 		active_vehicle = index
 		game.car_pos = info["pos"]
-		game.car_heading = info["heading"]
+		game.car_heading = float(info["heading"]) + float(info["axis_offset"])
 		fuel = float(info.get("fuel", 16.0 + float(index % 40)))
 		taken[str(index)] = _vehicle_record(info)
 		info["node"].hide()
@@ -456,7 +456,8 @@ func _attack_target(reach: float) -> Dictionary:
 		if dist <= reach and _clear_line(game.walk_pos, zombie["pos"]):
 			nearest = zombie
 			reach = dist
-	return nearest
+	var hostile: Dictionary = survivor_group.combat_target(game.walk_pos, reach)
+	return hostile if not hostile.is_empty() else nearest
 
 
 func _strike(item: String, stats: Dictionary) -> void:
@@ -469,6 +470,8 @@ func _strike(item: String, stats: Dictionary) -> void:
 	var nearest := _attack_target(stats["reach"])
 	if nearest.is_empty():
 		_notify("Disparo sem acerto." if firearm else "Golpe no ar.")
+	elif nearest.get("hostile", false):
+		survivor_group.take_hit(nearest, stats["damage"])
 	else:
 		_damage_zombie(nearest, stats["damage"])
 	if firearm:
@@ -1388,7 +1391,7 @@ func _clear_line(a: Vector2, b: Vector2) -> bool:
 
 
 func _valid_position(at: Vector2) -> bool:
-	return game._in_area(at) and not game._blocked(at) and not game._in_water(at)
+	return not game._walk_blocked(at)
 
 
 func _revive() -> void:
@@ -1433,13 +1436,13 @@ func save() -> void:
 	if active_vehicle >= 0:
 		var info: Dictionary = game.parked_vehicles[active_vehicle]
 		info["pos"] = game.car_pos
-		info["heading"] = game.car_heading
+		info["heading"] = game.car_heading - float(info["axis_offset"])
 		info["fuel"] = fuel
 		taken[str(active_vehicle)] = _vehicle_record(info)
 	var player: Vector2 = game._actor_pos()
 	var f := FileAccess.open(SAVE, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"on_foot":game.on_foot,"areas":containers,"bag":bag,"equipped":equipped,"outfit":outfit,"dirty_hands":dirty_hands,"chest":chest,"needs":needs,"taken":taken,"vehicle":active_vehicle,
+		f.store_string(JSON.stringify({"on_foot":game.on_foot,"areas":containers,"bag":bag,"equipped":equipped,"outfit":outfit,"dirty_hands":dirty_hands,"chest":chest,"needs":needs,"taken":taken,"parked_heading_v2":true,"vehicle":active_vehicle,
 			"fuel":fuel,"quest":quest,"found":supply_found,"reputation":reputation,"next":next_contract,"x":player.x,"y":player.y,
 			"cx":game.car_pos.x,"cy":game.car_pos.y,"heading":game.car_heading}))
 
@@ -1474,6 +1477,11 @@ func _load_progress() -> void:
 	chest = data.get("chest", {})
 	needs.merge(data.get("needs", {}), true)
 	taken = data.get("taken", {})
+	if not data.get("parked_heading_v2", false):
+		for id in taken:
+			var index := int(id)
+			if index >= 0 and index < game.parked_vehicles.size():
+				taken[id]["heading"] = float(taken[id]["heading"]) - float(game.parked_vehicles[index]["axis_offset"])
 	active_vehicle = int(data.get("vehicle",-1))
 	fuel = float(data.get("fuel",0.0))
 	quest = clampi(int(data.get("quest",0)),0,QUESTS.size())
