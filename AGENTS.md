@@ -5,3 +5,4 @@ Use a branch principal deste repositório como destino das atualizações do jog
 Mantenha os modelos e sprites herdados em assets/pack/ e assets/chars/ somente na cópia local. O README explica como obtê-los. Os modelos autorais em assets/cidade/ e o script Python que os gera fazem parte do projeto.
 
 Ao mudar uma versão jogável, gere os exports correspondentes no Godot e atualize os ZIPs em versoes/.
+O GitHub Pages publica a pasta docs/ na branch main. Ao atualizar o ZIP da versão web, copie os mesmos arquivos index.* do export para docs/ e preserve .nojekyll e .gdignore.

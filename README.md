@@ -6,6 +6,8 @@ Jogo de investigação em Campo Grande (MS), com cidade isométrica, renderizaç
 
 ## Jogar
 
+[**Jogar no navegador ou no celular**](https://contato673.github.io/CASO-ABERTO-GPT/)
+
 - [Windows](versoes/Caso-Aberto-Windows.zip) — extraia e execute **Caso Aberto - Campo Grande.exe**.
 - [Navegador](versoes/Caso-Aberto-Web.zip) — extraia e sirva a pasta por HTTP em localhost ou HTTPS na hospedagem.
 - [Revisão técnica e controles](REVISAO.md).
