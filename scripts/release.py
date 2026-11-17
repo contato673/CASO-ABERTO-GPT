@@ -42,6 +42,8 @@ def web(index: Path) -> None:
     pack = f"index.pck?v={version}"
     settings["fileSizes"][pack] = settings["fileSizes"].pop("index.pck")
     settings["args"] = ["--main-pack", "index.pck", *settings["args"]]
+    login_script = (ROOT / "scripts/web_login.js").read_text(encoding="utf-8-sig")
+    html = html.replace("</head>", f"<script>\n{login_script}\n</script>\n</head>", 1)
     html = html.replace("</head>", f'<meta name="game-release" content="{version}">\n</head>', 1)
     html = html.replace("(function () {", """(async function() {
 	// Revalidate the launcher even if the browser opened a cached copy.

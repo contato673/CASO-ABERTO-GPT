@@ -158,8 +158,8 @@ async def authenticate(action: str, request: Request):
             raise ValueError()
     except (ValueError, KeyError, TypeError, AttributeError):
         raise HTTPException(400, "Dados inválidos.")
-    if not re.fullmatch(r"[a-z0-9_]{3,24}", login) or not 10 <= len(password) <= 72:
-        raise HTTPException(400, "Use 3–24 letras, números ou _ no usuário e 10–72 caracteres na senha.")
+    if not re.fullmatch(r"[a-z0-9_]{3,24}", login) or not 8 <= len(password) <= 72:
+        raise HTTPException(400, "Use 3–24 letras, números ou _ no usuário e 8–72 caracteres na senha.")
     rate_limit(f"login:{login}")
     return await asyncio.to_thread(open_session, action, login, password, invite)
 

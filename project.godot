@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/version="da8a729396a1"
+config/version="44c83174df36"
 config/save_version="c4706e353687"
 
 config/name="Campo Grande: Zona de Quarentena"

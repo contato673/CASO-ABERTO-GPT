@@ -315,6 +315,14 @@ const SHOP_TYPES := [
 
 
 func _ready() -> void:
+	ph = _detect_phone()
+	add_child(alpha)
+	alpha.setup(self)
+	if alpha.endpoint.is_empty():
+		_start_session("")
+
+
+func _build_map() -> void:
 	var f := FileAccess.open(CITY_PATH, FileAccess.READ)
 	city = JSON.parse_string(f.get_as_text())
 	roads = city["roads"]
@@ -358,13 +366,10 @@ func _ready() -> void:
 	walker.add_child(walker_outline)
 	walker.hide()
 	_build_fixed_people()
-	add_child(alpha)
-	alpha.setup(self)
-	if alpha.endpoint.is_empty():
-		_start_session("")
 
 
 func _start_session(account: String) -> void:
+	_build_map()
 	session_ready = true
 	home = HOME_SCRIPT.new()
 	if not account.is_empty():
@@ -400,6 +405,9 @@ func _pm(i: int) -> void:
 	var n := Time.get_ticks_usec()
 	prof[i] += n - prof_t
 	prof_t = n
+
+
+var mobile_sign_refresh := 0.0
 
 
 func _process(delta: float) -> void:
@@ -446,7 +454,10 @@ func _process(delta: float) -> void:
 			street = str(survival.closest_site.get("address", "")).get_slice(",", 0)
 		street_label.text = street if not street.is_empty() else "Fora da via"
 	street_label.show()
-	_update_signs()
+	mobile_sign_refresh -= delta
+	if not ph or mobile_sign_refresh <= 0.0:
+		mobile_sign_refresh = .09
+		_update_signs()
 	var actor_height := Vector3.UP * (1.3 if on_foot else 0.85)
 	var covered := on_foot and _person_hidden(walker)
 	walker_outline.visible = covered
@@ -626,7 +637,7 @@ func _build_world() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-55, 35, 0)
-	sun.shadow_enabled = true
+	sun.shadow_enabled = not (ph and OS.has_feature("web"))
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.directional_shadow_max_distance = 125.0
 	sun.light_energy = 0.6

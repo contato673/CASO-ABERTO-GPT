@@ -22,6 +22,10 @@ var outgoing := 0.0
 var last_hurt := 0
 var people := {}
 var zombies := {}
+var browser_form: JavaScriptObject
+var browser_submit: JavaScriptObject
+var browser_mode: JavaScriptObject
+var loading_world := false
 
 
 func setup(city: Node3D) -> void:
@@ -42,6 +46,16 @@ func setup(city: Node3D) -> void:
 	request.request_completed.connect(_credentials)
 	add_child(request)
 	_build_login()
+	if OS.has_feature("web"):
+		var browser = JavaScriptBridge.get_interface("window")
+		var view = browser.bigFieldLogin
+		if view != null:
+			browser_submit = JavaScriptBridge.create_callback(_browser_authenticate)
+			browser_mode = JavaScriptBridge.create_callback(_browser_change_mode)
+			if view.mount(browser_submit,browser_mode):
+				browser_form = view
+				layer.hide()
+				_refresh_login()
 
 
 func _build_login() -> void:
@@ -93,24 +107,47 @@ func _field(form: VBoxContainer, placeholder: String, maximum: int, secret: bool
 
 
 func _refresh_login() -> void:
-	notice.text = "Cadastro por convite. A senha deve ter pelo menos 10 caracteres." if registering else "Campo Grande/MS · Alpha fechado para 10 jogadores"
+	notice.text = "Cadastro por convite. A senha deve ter pelo menos 8 caracteres." if registering else "Campo Grande/MS · Alpha fechado para 10 jogadores"
 	invite.visible = registering
 	submit.text = "Criar conta e entrar" if registering else "Entrar no Big Field"
 	mode.text = "Já tenho conta" if registering else "Tenho um convite"
+	_update_browser()
+
+
+func _browser_authenticate(args: Array) -> void:
+	if args.size() == 3:
+		_submit_credentials(str(args[0]),str(args[1]),str(args[2]))
+
+
+func _browser_change_mode(_args: Array) -> void:
+	registering = not registering
+	_refresh_login()
+
+
+func _update_browser() -> void:
+	if browser_form != null:
+		browser_form.update(registering,notice.text,submit.disabled)
 
 
 func _authenticate() -> void:
-	if login.text.strip_edges().length() < 3 or password.text.length() < 10:
-		notice.text = "Revise o usuário e a senha."
+	_submit_credentials(login.text,password.text,invite.text)
+	password.clear()
+	invite.clear()
+
+
+func _submit_credentials(username: String, secret: String, code: String) -> void:
+	if submit.disabled:
+		return
+	if username.strip_edges().length() < 3 or secret.length() < 8:
+		_login_error("Revise o usuário e a senha. Use pelo menos 8 caracteres na senha.")
 		return
 	submit.disabled = true
 	mode.disabled = true
 	notice.text = "Conectando ao servidor…"
+	_update_browser()
 	var route := "register" if registering else "login"
-	var data := JSON.stringify({"login":login.text, "password":password.text, "invite":invite.text})
+	var data := JSON.stringify({"login":username, "password":secret, "invite":code})
 	var result := request.request(endpoint + "/api/" + route, PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, data)
-	password.clear()
-	invite.clear()
 	if result != OK:
 		_login_error("Falha ao conectar.")
 
@@ -119,7 +156,30 @@ func _login_error(message: String) -> void:
 	submit.disabled = false
 	mode.disabled = false
 	notice.text = message
-	layer.show()
+	if browser_form != null:
+		browser_form.show()
+		_update_browser()
+	else:
+		layer.show()
+
+
+func _hide_login() -> void:
+	if browser_form != null:
+		browser_form.hide()
+	else:
+		layer.hide()
+
+
+func _load_world() -> void:
+	loading_world = true
+	notice.text = "Carregando Campo Grande…"
+	_update_browser()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if live:
+		game._start_session(account)
+		_hide_login()
+	loading_world = false
 
 
 func _credentials(result: int, status: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
@@ -160,13 +220,14 @@ func tick(delta: float) -> void:
 			continue
 		if packet["kind"] == "ready":
 			live = true
-			layer.hide()
-			if not game.session_ready:
-				game._start_session(account)
+			if game.session_ready:
+				_hide_login()
+			elif not loading_world:
+				_load_world()
 		elif packet["kind"] == "snapshot" and game.session_ready:
 			_snapshot(packet)
 	outgoing += delta
-	if live and outgoing >= 0.12:
+	if live and game.session_ready and outgoing >= 0.12:
 		outgoing = 0.0
 		var point: Vector2 = game._actor_pos()
 		socket.send_text(JSON.stringify({"kind":"pose", "x":point.x, "y":point.y, "face":game.walk_face,
