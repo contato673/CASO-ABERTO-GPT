@@ -10,9 +10,9 @@ Em um jogo novo, crie seu sobrevivente e leia o bilhete de Bia. Esta atualizaç�
 | --- | --- |
 | WASD, setas ou joystick | Caminhar ou dirigir |
 | E, tocar na construção próxima ou botão de interação | Abrir a entrada, interagir com móveis ou falar no abrigo |
-| F ou Roubar / Entrar / Descer | Assumir um carro próximo ou sair dele com o veículo parado |
+| F ou botão do veículo | Inspecionar, roubar, entrar ou descer do carro parado |
 | Espaço ou mira na tela | Atacar com o equipamento disponível |
-| I ou ícone da mochila | Ver suprimentos, usar itens e trocar a arma na mão |
+| I ou ícone da mochila | Abrir a grade e tocar num item para usá-lo, equipá-lo ou vesti-lo |
 | Esc ou Fechar | Fechar a janela |
 
 Saúde, fome, sede e energia afetam recuperação e movimento. A mochila tem 18 espaços. O saque varia por categoria de construção e volta entre 2 e 6 horas reais depois que o estoque é esvaziado. A contagem continua com o jogo fechado. Os carros consomem combustível. Estacione e chegue perto do carro em uso para abastecer. O motor e a quebra de vidro podem chamar infectados.

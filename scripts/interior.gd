@@ -3,22 +3,24 @@ extends Node3D
 const ORIGIN := Vector3(120.0, 0.0, 30000.0)
 const ART := "res://assets/interiores/"
 const LOCAL := "res://assets/interiores_locais/"
-const FRAME := Vector2i(96, 112)
+const FRAME := Vector2i(32,40)
+const PERSON_PIXEL := .052
+const REACH := 1.52
 const COLOR := Color("#efe3bf")
 const ROOM_NAMES := {"home":"Residência", "retail":"Comércio", "pharmacy":"Farmácia",
 	"school":"Escola", "industry":"Indústria", "police":"Delegacia", "office":"Escritório",
 	"hotel":"Hotel", "civic":"Edifício público"}
 # Model, room position, visual height, item groups and optional interaction.
 const FURNITURE := {
-	"home":[["sofa",2.2,2.0,1.28,"cloth","seat"],["coffee",2.3,4.0,.76,"manual"],
-		["tv",4.2,1.8,.92,"parts"],["plant",.9,3.6,1.1,""],["vacuum",4.5,4.9,1.02,""],
-		["fridge",8.6,1.3,1.75,"water"],["cupboard",6.8,1.3,1.59,"food"],
-		["kitchen_sink",10.0,2.7,1.19,"","wash"],["stove",7.0,3.0,1.05,""],
+	"home":[["sofa",2.35,.91,1.0,"cloth","seat"],["coffee",2.3,4.0,.76,"manual"],
+		["tv",3.65,4.62,.80,"parts"],["plant",.9,3.6,1.1,""],["vacuum",4.5,4.9,1.02,""],
+		["fridge",9.92,.91,1.86,"water"],["cupboard",7.78,.78,1.80,"food"],
+		["kitchen_sink",6.08,.91,1.0,"","wash"],["stove",8.79,.89,.94,""],
 		["table",8.7,4.5,1.04,"food"],["chair",9.8,4.3,.84,"","seat"],
-		["bed",2.1,8.2,1.0,"cloth","bed"],["wardrobe",4.0,7.4,1.62,"clothes"],
-		["nightstand",.9,8.0,.85,"manual"],["sink",7.1,7.1,1.11,"","wash"],
-		["medicine",8.7,7.1,1.35,"med"],["bath",9.7,8.7,1.02,""],
-		["washer",6.9,8.9,1.0,"cloth"],["basket",7.9,9.3,.58,"cloth"],["trash",10.6,6.2,.65,""]],
+		["bed",1.65,8.45,1.0,"cloth","bed"],["wardrobe",3.1,6.98,1.87,"clothes"],
+		["nightstand",.64,7.62,.56,"manual"],["sink",7.39,6.98,.97,"","wash"],
+		["medicine",8.61,6.98,1.58,"med"],["bath",10.46,8.2,.67,""],
+		["washer",9.8,6.96,.89,"cloth"],["basket",7.9,9.3,.58,"cloth"],["trash",10.6,6.2,.65,""]],
 	"retail":[["fridge",1.4,1.6,1.7,"water"],["shelf",3.5,1.6,1.42,"food"],
 		["shelf",6.1,1.6,1.42,"food"],["shelf",8.9,1.6,1.42,"tools"],["desk",1.5,4.7,1.12,"manual","survey"],
 		["fridge",10.3,3.9,1.65,"water"],["shelf",4.0,5.1,1.36,"clothes"],["parcel",7.8,5.1,.62,"parts"],
@@ -32,17 +34,17 @@ const FURNITURE := {
 		["cubbies",8.6,1.8,1.58,"manual"],["table",8.3,4.4,1.28,"food"],
 		["fridge",10.5,3.3,1.62,"water"],["medicine",2.5,8.4,1.6,"med"],["sink",7.9,8.2,1.16,"","wash"]],
 	"industry":[["crate",1.4,1.6,1.16,"tools"],["crate",3.5,1.5,1.22,"parts"],
-		["drum",8.1,1.6,1.12,"fuel"],["drum",10.2,2.6,1.18,"fuel"],["generator",1.6,5.0,1.32,"parts"],
-		["desk",4.0,5.2,1.2,"manual","survey"],["crate",8.3,5.0,1.25,"tools"],["rubble",9.6,6.6,.32,""],
-		["medicine",1.5,8.4,1.56,"med"],["sink",3.2,8.4,1.16,"","wash"],["barricade",9.5,8.3,1.06,""]],
+		["drum",7.93,.83,1.12,"fuel"],["drum",9.47,.83,1.18,"fuel"],["generator",1.04,4.33,1.25,"parts"],
+		["desk",4.0,5.66,1.0,"manual","survey"],["crate",8.69,4.83,1.10,"tools"],["rubble",10.16,6.1,.31,""],
+		["medicine",5.38,7.04,1.56,"med"],["sink",6.55,7.04,.96,"","wash"],["barricade",10.08,8.53,1.02,""]],
 	"police":[["reception",2.0,1.7,1.3,"manual","survey"],["office_chair",4.1,1.5,.97,"","seat"],
 		["evidence",9.1,1.8,1.8,"tools"],["crate",10.2,3.4,1.04,"tools"],["interrogation",2.4,4.7,1.25,"manual"],
 		["radio",3.7,4.1,.55,"parts"],["barricade",8.5,5.0,1.01,""],
 		["medicine",2.4,8.2,1.51,"med"],["sink",8.5,8.3,1.22,"","wash"]],
 	"office":[["desk",2.2,1.7,1.24,"manual","survey"],["office_chair",4.0,1.6,1.05,"","seat"],
 		["shelf",8.2,1.7,1.56,"parts"],["parcel",10.1,2.1,.65,"parts"],["desk",8.4,4.4,1.17,"manual"],
-		["plant",1.2,4.6,1.13,""],["sofa",3.0,4.6,1.13,"cloth","seat"],["medicine",2.5,8.4,1.43,"med"],
-		["fridge",8.0,8.1,1.62,"water"],["sink",10.0,8.1,1.25,"","wash"]],
+		["plant",.84,2.97,1.13,""],["sofa",2.62,5.72,1.08,"cloth","seat"],["medicine",1.92,7.12,1.55,"med"],
+		["fridge",8.2,7.78,1.79,"water"],["sink",9.52,7.78,.98,"","wash"],["office_chair",8.3,5.22,.99,"","seat"]],
 	"hotel":[["desk",2.2,1.7,1.25,"manual","survey"],["sofa",3.6,4.4,1.19,"cloth","seat"],
 		["bed",8.4,2.5,1.1,"cloth","bed"],["nightstand",10.2,1.6,.88,"manual"],
 		["wardrobe",1.7,8.3,1.73,"clothes"],["bed",3.8,8.3,1.06,"cloth","bed"],
@@ -104,7 +106,10 @@ var home_facing := 7
 var action_until := 0.0
 var hud: CanvasLayer
 var title: Label
-var hint: Label
+var hint: Button
+var focused := {}
+var highlighted := {}
+var window_built := false
 var exit: Button
 
 func setup(city: Node, survival: Node) -> void:
@@ -120,12 +125,22 @@ func setup(city: Node, survival: Node) -> void:
 	game._label_bg(title, 10, 6)
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(title)
-	hint = Label.new()
-	hint.position = Vector2(12,128)
-	hint.add_theme_font_size_override("font_size",16)
-	game._label_bg(hint, 9, 5)
-	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hint = Button.new()
+	hint.position = Vector2(12,126)
+	hint.custom_minimum_size = Vector2(1,35)
+	hint.add_theme_font_size_override("font_size", 15)
+	hint.focus_mode = Control.FOCUS_NONE
+	hint.pressed.connect(interact)
+	var prompt_style := StyleBoxFlat.new()
+	prompt_style.bg_color = Color(0.07,.09,.11,.94)
+	prompt_style.shadow_color = Color(0,0,0,.55)
+	prompt_style.shadow_size = 5
+	prompt_style.set_corner_radius_all(6)
+	prompt_style.content_margin_left = 12
+	prompt_style.content_margin_right = 12
+	hint.add_theme_stylebox_override("normal",prompt_style)
 	hud.add_child(hint)
+	hint.hide()
 	exit = Button.new()
 	exit.text = "Sair"
 	exit.custom_minimum_size = Vector2(76,52)
@@ -330,6 +345,7 @@ func _build_floor() -> void:
 		"school":"#8a969b","industry":"#77796e","police":"#667a88","office":"#7d8288","civic":"#8b867e"}
 	var wall := Color(palette[kind]).lerp(Color.from_hsv(hue,.25,.48),.22)
 	var floor_color := Color("#98795c") if kind in ["home","hotel"] else Color("#61696b")
+	window_built = false
 	floor_shape = _outline()
 	_surface(floor_color)
 	for i in floor_shape.size():
@@ -340,8 +356,13 @@ func _build_floor() -> void:
 		if Geometry2D.is_point_in_polygon(middle+outside*.18,floor_shape):
 			outside = -outside
 		var back := outside.x + outside.y < -.5 and (middle.x < 4.1 or middle.y < 4.1)
-		_edge(a,b,wall,2.78 if back else .22)
-	for partition in PARTITIONS[kind]:
+		if back and not window_built and floor_index == 0 and site.has("footprint") and a.distance_to(b) > 3.8:
+			_window_wall(a,b,outside,wall)
+			window_built = true
+		else:
+			_edge(a,b,wall,2.78 if back else .22)
+	var upper := _upper_floor()
+	for partition in upper.get("walls",PARTITIONS[kind]):
 		var far: float = span.x if float(partition[2]) == 11.6 else partition[2]
 		_wall(partition[0],partition[1],far,partition[3],wall,.86)
 	var rug := Color("#795048") if kind == "home" else Color("#47595e")
@@ -353,21 +374,17 @@ func _build_floor() -> void:
 	carpet.mesh = patches.commit()
 	carpet.material_override = game._mat(Color.WHITE,true)
 	scene.add_child(carpet)
-	for definition in FURNITURE[kind]:
-		if floor_index > 0 and kind == "hotel" and str(definition[0]) == "desk":
-			_prop(["bed",definition[1],definition[2],1.08,"cloth","bed"])
-		else:
-			_prop(definition)
-	if kind == "police" and ResourceLoader.exists(LOCAL + "lineup.png"):
+	for definition in upper.get("furniture",_furniture_plan()):
+		_prop(definition)
+	if floor_index == 0 and kind == "police" and ResourceLoader.exists(LOCAL + "lineup.png"):
 		_prop(["lineup",8.6,.66,1.6,""])
-	if kind == "industry":
-		_prop(["fridge",4.1,8.8,1.50,"water"])
-		_prop(["wardrobe",10.15,4.1,1.61,"clothes"])
-	if kind in ["home","office"]:
+	if floor_index == 0 and kind == "industry":
+		_prop(["fridge",7.70,7.04,1.72,"water"])
+		_prop(["evidence",10.48,2.54,1.86,"clothes"])
+	if floor_index == 0 and kind in ["home","office"]:
 		_prop(["parcel",.7,5.6,.54,"tools"])
-	_add_action(_mapped(Vector2(5.7,span.y-.55)), "Sair pela porta", "exit")
-	if site.has("footprint") and floor_index == 0:
-		_add_action(_mapped(Vector2(1.0,5.5)), "Sair pela janela", "window")
+	if floor_index == 0:
+		_add_action(_mapped(Vector2(5.7,span.y-.55)), "Sair pela porta", "exit")
 	if levels > 1:
 		if floor_index < levels-1:
 			_stair(_mapped(Vector2(span.x-1.2,9.7)),true)
@@ -377,7 +394,91 @@ func _build_floor() -> void:
 		_add_action(_mapped(Vector2(5.1,5.85)), "Falar com Lia", "shelter")
 	_make_actor()
 	_refresh_stock()
-	title.text = "%s  ·  %s" % [site["name"], "Térreo" if floor_index == 0 else "%dº andar" % floor_index]
+	exit.visible = floor_index == 0
+	title.text = "%s  ·  %s" % [site["name"], "Térreo" if floor_index == 0 else "%dº · %s" % [floor_index,upper["name"]]]
+
+func _window_wall(a: Vector2, b: Vector2, outside: Vector2, wall: Color) -> void:
+	var center := a.lerp(b,.54)
+	var along := a.direction_to(b)
+	var start := center-along*.79
+	var finish := center+along*.79
+	var dx := 1.58 if absf(along.x) > .5 else .11
+	var dz := 1.58 if absf(along.y) > .5 else .11
+	_edge(a,start,wall,2.78)
+	_edge(finish,b,wall,2.78)
+	_edge(start,finish,wall,.95)
+	_box(_v(center,2.42),Vector3(dx,.72,dz),wall)
+	_box(_v(center,1.92),Vector3(dx+.14,.085,dz+.12),Color("#c9b398"))
+	_box(_v(center,.98),Vector3(dx+.21,.075,dz+.21),Color("#c9b398"))
+	for shift in [-.75,0.0,.75]:
+		_box(_v(center+along*shift,1.46),Vector3(.075,.91,.075),Color("#d4bf9f"))
+	_box(_v(center+outside*.055,1.45),Vector3(dx*.96,.81,dz*.56),Color("#739fb4"))
+	var approach := center-outside*.98
+	_add_action(_put_inside(approach),"Sair pela janela","window")
+
+
+func _upper_floor() -> Dictionary:
+	if floor_index == 0:
+		return {}
+	var purpose := "Arquivo"
+	if kind in ["hotel","home"]:
+		purpose = "Quartos" if floor_index % 2 == 1 else "Lavanderia"
+	elif kind in ["industry","pharmacy","retail"]:
+		purpose = "Estoque" if floor_index % 2 == 1 else "Escritório"
+	elif kind == "school":
+		purpose = "Biblioteca" if floor_index % 2 == 1 else "Salas de aula"
+	elif floor_index % 2 == 0:
+		purpose = "Escritório"
+	match purpose:
+		"Quartos":
+			return {"name":purpose,"walls":[[5.65,0,5.65,5.75],[0,6,3.35,6],[7.7,6,11.6,6]],
+				"furniture":[["bed",1.75,2.1,1,"cloth","bed"],["wardrobe",3.3,.85,1.8,"clothes"],
+					["nightstand",.84,1.35,.59,"parts"],["bed",7.25,2.1,1,"cloth","bed"],
+					["wardrobe",9.15,.9,1.8,"clothes"],["sink",.85,8.05,1,"","wash"],["medicine",2.15,8.2,1.4,"med"]]}
+		"Lavanderia":
+			return {"name":purpose,"walls":[[0,5.6,5,5.6],[8.5,5.6,11.6,5.6]],
+				"furniture":[["washer",1.8,1.35,.97,"parts"],["washer",3.15,1.35,.97,""],["washer",4.5,1.35,.97,""],
+					["basket",2.2,3.55,.6,"cloth"],["shelf",7.7,1.3,1.45,"clothes"],["sink",9.4,1.25,1,"","wash"]]}
+		"Estoque":
+			return {"name":purpose,"walls":[[7.05,0,7.05,4],[7.05,6,7.05,8.5]],
+				"furniture":[["shelf",1.35,1.35,1.6,"food"],["shelf",3.3,1.35,1.6,"tools"],["shelf",5.5,1.35,1.6,"med"],
+					["crate",1.6,4.6,.92,"parts"],["crate",3.35,5.15,.92,"tools"],["drum",9.05,1.3,1,"fuel"],
+					["desk",9.4,4.05,1.1,"manual"],["fridge",1.45,8.4,1.76,"water"]]}
+		"Biblioteca","Arquivo":
+			return {"name":purpose,"walls":[[0,6.1,2.8,6.1],[6.8,0,6.8,4.4]],
+				"furniture":[["shelf",1.55,1.45,1.7,"manual"],["shelf",3.4,1.45,1.7,"manual"],
+					["shelf",5.25,1.45,1.7,"parts"],["shelf",1.6,4.15,1.7,"manual"],
+					["table",8.85,2.65,1.06,"manual"],["chair",10.18,2.73,.82,"","seat"],
+					["parcel",1.25,8.5,.65,"clothes"]]}
+		"Salas de aula":
+			return {"name":purpose,"walls":[[5.9,0,5.9,5.2],[0,6.6,3.3,6.6]],
+				"furniture":[["chalk",1.15,1,1.26,""],["teacher",3.6,1.4,1.1,"manual"],
+					["student",2.05,3.75,.96,""],["student",4.05,3.75,.96,""],
+					["cubbies",8.65,1.7,1.56,"parts"],["table",8.55,4.6,1.08,"tools"]]}
+	return {"name":purpose,"walls":[[0,5.1,4.4,5.1],[7.65,5.1,11.6,5.1],[6.1,0,6.1,3.65]],
+		"furniture":[["desk",2.25,1.55,1.1,"parts"],["office_chair",3.65,2.55,.96,"","seat"],
+			["shelf",7.7,1.45,1.5,"manual"],["desk",9.65,2.75,1.1,"tools"],
+			["sofa",2.35,7.2,1.02,"cloth","seat"],["coffee",2.45,8.8,.68,"manual"]]}
+
+
+func _furniture_plan() -> Array:
+	if kind != "home" or layout_id % 3 == 0:
+		return FURNITURE[kind]
+	if layout_id % 3 == 1:
+		return [["bed",2.1,1.76,1,"cloth","bed"],["wardrobe",4.47,.8,1.89,"clothes"],
+			["nightstand",.72,1.0,.56,"manual"],["fridge",9.65,.95,1.86,"water"],
+			["cupboard",8.3,.84,1.78,"food"],["kitchen_sink",6.77,.89,.98,"","wash"],
+			["table",8.9,4.1,1.0,"food"],["chair",10.05,4.12,.82,"","seat"],
+			["sofa",2.5,7.14,1.03,"cloth","seat"],["coffee",2.5,8.67,.61,"parts"],
+			["tv",.65,9.25,.82,"parts"],["medicine",7.12,6.91,1.44,"med"],["sink",8.26,6.9,.97,"","wash"],
+			["washer",10.11,6.92,.9,"cloth"],["bath",9.72,8.83,.7,""],["trash",11.0,8.68,.59,""]]
+	return [["sofa",2.35,.86,1.03,"cloth","seat"],["coffee",2.36,2.64,.65,"manual"],
+		["tv",.84,4.35,.84,"parts"],["plant",4.1,.74,1.11,""],["bed",8.18,2.12,1,"cloth","bed"],
+		["wardrobe",10.61,3.48,1.87,"clothes"],["nightstand",8.96,.83,.58,"parts"],
+		["fridge",1.34,7.03,1.86,"water"],["cupboard",2.69,7.01,1.76,"food"],
+		["kitchen_sink",.8,8.24,.98,"","wash"],["table",3.09,9.11,1.04,"food"],
+		["sink",7.53,6.92,.96,"","wash"],["medicine",8.8,6.93,1.42,"med"],["bath",10.41,8.21,.73,""]]
+
 
 func _stair(at: Vector2, up: bool) -> void:
 	at = _put_inside(at)
@@ -415,84 +516,146 @@ func _prop(row: Array) -> void:
 	var at := _put_inside(_mapped(Vector2(row[1], row[2])))
 	if not at.is_finite():
 		return
+	var model: String = row[0]
 	var height: float = row[3]
-	var sprite := _sprite(_image(row[0]),at,height)
-	# A billboard's projected face is wider than its footprint.
-	var width := clampf(float(sprite.texture.get_width()) * sprite.pixel_size * .65,.43,2.0)
-	if row[0] != "rubble":
-		var footprint := Vector2(width,.53 if height < 1.1 else .7)
+	var footprint := Vector2(.85,.65)
+	if model == "bed":
+		footprint = Vector2(1.26,2.07)
+		_box(_v(at,.17),Vector3(footprint.x,.30,footprint.y),Color("#695849"))
+		_box(_v(at,.38),Vector3(1.20,.19,1.97),Color("#e1d4bd"))
+		_box(_v(at+Vector2(0,.25),.486),Vector3(1.19,.055,1.42),Color("#527998"))
+		_box(_v(at+Vector2(0,-.68),.513),Vector3(.74,.105,.41),Color("#f3e8d4"))
+		_box(_v(at+Vector2(0,-.99),.43),Vector3(1.25,.81,.13),Color("#75634d"))
+		height = .52
+	elif model == "sofa":
+		footprint = Vector2(2.07,.87)
+		var fabric := Color("#48708a")
+		_box(_v(at,.24),Vector3(2.06,.39,.87),fabric.darkened(.28))
+		_box(_v(at+Vector2(0,-.31),.61),Vector3(2.04,.61,.21),fabric)
+		_box(_v(at+Vector2(0,.075),.448),Vector3(1.64,.13,.63),fabric.lightened(.12))
+		for side in [-.93,.93]:
+			_box(_v(at+Vector2(side,.015),.56),Vector3(.22,.28,.76),fabric)
+		height = .52
+	else:
+		var sprite := _sprite(_image(model),at,height)
+		var width := clampf(float(sprite.texture.get_width()) * sprite.pixel_size * .69,.43,2.0)
+		footprint = Vector2(width,.53 if height < 1.1 else .7)
+	if model != "rubble":
 		obstacles.append(Rect2(at-footprint*.5,footprint))
 	if not str(row[4]).is_empty():
 		sockets.append({"pos":at,"zone":row[4],"height":height})
 	if row.size() > 5:
 		var code := str(row[5])
 		var caption: String = {"seat":"Sentar","bed":"Deitar","wash":"Lavar as mãos","survey":"Investigar"}.get(code,"")
-		_add_action(at,caption,code)
+		var touch := at + Vector2(0,.40 if code == "seat" else .30)
+		if code == "bed":
+			touch = at + Vector2(.56,.16)
+		_add_action(touch,caption,code,at)
 
-func _add_action(at: Vector2,label: String,code: String) -> void:
-	var sign := Label3D.new()
-	sign.text = label
-	sign.font_size = 37
-	sign.outline_size = 11
-	sign.pixel_size = .013
-	sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	sign.modulate = COLOR
-	sign.no_depth_test = true
-	sign.position = _v(at,1.45)
-	scene.add_child(sign)
-	actions.append({"pos":at,"caption":label,"code":code,"target":sign})
 
-func _actor_texture(action: String) -> Texture2D:
-	var key: String = "%s:%s:%s" % [action, life.outfit, game.home.cfg.get("camisa",0)]
+func _add_action(at: Vector2,label: String,code: String, anchor := Vector2.INF) -> void:
+	var marker := Marker3D.new()
+	marker.position = _v(at,.65)
+	scene.add_child(marker)
+	actions.append({"pos":at,"caption":label,"code":code,"target":marker,"anchor":anchor})
+
+
+func _seated_texture(row: int, source: Texture2D) -> Texture2D:
+	var key := "%s:%d" % [source.get_instance_id(),row]
 	if avatar_art.has(key):
 		return avatar_art[key]
-	var source := _image("actor_" + action)
-	var profile: Dictionary = game.home.cfg
 	var image := source.get_image()
-	var color: Color = game.home.SHIRT[clampi(int(profile.get("camisa",0)),0,game.home.SHIRT.size()-1)]
-	if life.outfit == "jacket":
-		color = Color("#459678")
-	elif life.outfit == "shirt":
-		color = Color("#5b8fce")
-	elif life.outfit == "coat":
-		color = Color("#cb953d")
-	for y in image.get_height():
-		for x in image.get_width():
-			var texel := image.get_pixel(x,y)
-			if texel.a > .6 and texel.b > texel.r * 1.22 and texel.b > texel.g * 1.04:
-				var tinted := color * clampf(texel.v * 1.43,.42,1.38)
-				tinted.a = texel.a
-				image.set_pixel(x,y,tinted)
-	var result := ImageTexture.create_from_image(image)
-	avatar_art[key] = result
-	return result
+	image.convert(Image.FORMAT_RGBA8)
+	var pose := Image.create_empty(32,40,false,Image.FORMAT_RGBA8)
+	pose.blit_rect(image,Rect2i(0,row,32,25),Vector2i(0,9))
+	for offset in [11,17]:
+		pose.fill_rect(Rect2i(offset,32,5,6),Color("#252b3a"))
+		pose.fill_rect(Rect2i(offset+1,32,3,4),Color("#495362"))
+		pose.fill_rect(Rect2i(offset+1,37,4,2),Color("#262635"))
+	var texture := ImageTexture.create_from_image(pose)
+	avatar_art[key] = texture
+	return texture
+
 
 func _make_actor() -> void:
-	actor = _sprite(_actor_texture("idle"),pos,2.55)
+	actor = _sprite(game.walker.texture,pos,1.76)
 	actor.region_enabled = true
-	actor.pixel_size = .038
-	actor.offset.y = FRAME.y * .5 - 3
+	actor.pixel_size = PERSON_PIXEL
+	actor.no_depth_test = true
+	actor.render_priority = 8
+	actor.offset.y = 19
 	held = _sprite(null,pos,.5)
+	held.no_depth_test = true
+	held.render_priority = 9
 	_pose("idle",0.0)
+
 
 func _pose(action: String, delta: float) -> void:
 	if action != anim_key:
 		anim_key = action
 		phase = 0.0
-	phase += delta * (12.0 if action == "walk" else 8.0)
-	actor.texture = _actor_texture(action)
-	var count := maxi(1, floori(float(actor.texture.get_width()) / FRAME.x))
-	actor.region_rect = Rect2((int(phase)%count)*FRAME.x,facing*FRAME.y,FRAME.x,FRAME.y)
-	actor.position = _v(pos if posture.is_empty() else posture_at, -.48 if not posture.is_empty() else .0)
-	actor.billboard = BaseMaterial3D.BILLBOARD_DISABLED if posture == "bed" else BaseMaterial3D.BILLBOARD_ENABLED
-	actor.basis = game.cam.global_basis * Basis(Vector3.BACK,-1.12) if posture == "bed" else Basis.IDENTITY
+	phase += delta * (12.0 if action == "running" else 8.0)
+	var row := 320 if facing in [0,1,2,3] else 360
+	var source: Texture2D = game.walker.texture
+	var frame := int(phase)%4 if action in ["walk","running"] else 0
+	actor.position = _v(pos)
+	actor.region_enabled = posture != "seat"
+	actor.texture = source
+	actor.region_rect = Rect2(frame*FRAME.x,row,FRAME.x,FRAME.y)
+	actor.offset.y = 19
+	actor.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	actor.basis = Basis.IDENTITY
+	if posture == "seat":
+		actor.texture = _seated_texture(row,source)
+		actor.position = _v(posture_at+Vector2(0,.17),.23)
+	elif posture == "bed":
+		actor.position = _v(posture_at,.57)
+		actor.offset = Vector2.ZERO
+		actor.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		actor.basis = Basis(Vector3.RIGHT,-PI*.5)
+	elif action == "carrying":
+		actor.offset.y = 17.0 + sin(minf(phase,4.0)*.78)*1.5
 	var icon: Texture2D = life.icons.get(life.equipped)
 	held.texture = icon
 	held.visible = icon != null and posture.is_empty()
 	if held.visible:
-		held.pixel_size = .42 / maxf(icon.get_width(),icon.get_height())
-		var offset: Vector3 = game.cam.global_basis.x * .36 + game.cam.global_basis.z * .11
-		held.position = actor.position + offset + Vector3.UP * .91
+		held.pixel_size = .32 / maxf(icon.get_width(),icon.get_height())
+		var offset: Vector3 = game.cam.global_basis.x * .29 + game.cam.global_basis.z * .13
+		held.position = actor.position + offset + Vector3.UP * .79
+
+
+func _loot_icon(item: String) -> Texture2D:
+	if highlighted.has(item):
+		return highlighted[item]
+	var texture: Texture2D = life.icons.get(item)
+	if texture == null:
+		texture = _image({"med":"medical_case","bandage":"medical_case","parts":"electronic_parts",
+			"manual":"radio","wood":"crate","cloth":"basket","fuel":"drum"}.get(item,"parcel"))
+	var source := texture.get_image()
+	source.convert(Image.FORMAT_RGBA8)
+	var used := source.get_used_rect()
+	source = source.get_region(used)
+	var side := 38.0 / maxf(source.get_width(),source.get_height())
+	source.resize(maxi(1,roundi(source.get_width()*side)),maxi(1,roundi(source.get_height()*side)),Image.INTERPOLATE_NEAREST)
+	var board := Image.create_empty(54,54,false,Image.FORMAT_RGBA8)
+	var margin := (Vector2i(54,54)-source.get_size()) / 2
+	for y in 54:
+		for x in 54:
+			var distance := Vector2(x-26.5,y-26.5).length()
+			if distance < 25.0:
+				board.set_pixel(x,y,Color("#202632") if distance < 22.0 else Color("#ffcd68"))
+	for y in source.get_height():
+		for x in source.get_width():
+			if source.get_pixel(x,y).a < .25:
+				continue
+			var point := margin + Vector2i(x,y)
+			for n in [Vector2i(-2,0),Vector2i(2,0),Vector2i(0,-2),Vector2i(0,2)]:
+				board.set_pixelv(point+n,Color("#ffe49c"))
+	board.blend_rect(source,Rect2i(Vector2i.ZERO,source.get_size()),margin)
+	var result := ImageTexture.create_from_image(board)
+	highlighted[item] = result
+	return result
+
 
 func _refresh_stock() -> void:
 	for entry in pickups:
@@ -524,26 +687,15 @@ func _refresh_stock() -> void:
 		var slot: Dictionary = sockets[socket_id]
 		var offset := int(used.get(socket_id,0))
 		used[socket_id] = offset + 1
-		var at: Vector2 = slot["pos"] + Vector2((offset%3-1)*.29,-.23 - float(floori(float(offset)/3))*.23)
-		var texture: Texture2D = life.icons.get(item)
-		if texture == null:
-			texture = _image({"med":"medical_case","bandage":"medical_case","parts":"electronic_parts",
-				"manual":"radio","water":"fridge","dirty_water":"fridge","wood":"crate",
-				"cloth":"basket","fuel":"drum"}.get(item,"parcel"))
-		var marker := _sprite(texture,at,.30)
-		marker.position.y = float(slot["height"]) * .69 + .14
+		var at: Vector2 = slot["pos"] + Vector2((offset%3-1)*.55,-.23 - float(floori(float(offset)/3))*.23)
+		var marker := _sprite(_loot_icon(item),at,.88)
+		marker.offset.y = 0
+		marker.position.y = float(slot["height"]) * .81 + .34
 		marker.no_depth_test = true
-		var label := Label3D.new()
-		label.text = "%s ×%d" % [life.ITEM_NAMES[item], stock[item]]
-		label.font_size = 35
-		label.outline_size = 10
-		label.pixel_size = .011
-		label.no_depth_test = true
-		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		label.modulate = Color("#ffe499")
-		label.position.y = .52
-		marker.add_child(label)
-		pickups.append({"item":item,"pos":at,"target":marker,"label":label,"caption":label.text})
+		marker.render_priority = 10
+		pickups.append({"item":item,"pos":at,"target":marker,
+			"caption":"Pegar %s ×%d" % [life.ITEM_NAMES[item],stock[item]]})
+
 
 func focus() -> Vector3:
 	return global_position + Vector3(span.x*.5,.05,span.y*.51)
@@ -573,12 +725,11 @@ func tick(delta: float,input: Vector2) -> void:
 		life._update_hud()
 	action_until = maxf(0,action_until-delta)
 	_pose("carrying" if action_until > 0 else ("running" if running else ("walk" if walking else "idle")), delta)
-	for entry in actions:
-		entry["target"].visible = pos.distance_to(entry["pos"]) < 3.1 and _available(entry)
-	for entry in pickups:
-		entry["label"].visible = pos.distance_to(entry["pos"]) < 3.0
-	var nearest := _nearest()
-	hint.text = str(nearest.get("caption","Toque em um item para coletar."))
+	focused = _nearest()
+	hint.visible = not focused.is_empty() and not game.menu_open
+	if hint.visible:
+		hint.text = "Levantar" if not posture.is_empty() else focused["caption"]
+		hint.reset_size()
 
 func _available(entry: Dictionary) -> bool:
 	return entry["code"] != "survey" or (life.quest < life.QUESTS.size() and life.QUESTS[life.quest]["place"] == site["id"] and str(life.QUESTS[life.quest]["item"]).is_empty())
@@ -593,7 +744,7 @@ func _can_walk(point: Vector2) -> bool:
 
 func _nearest() -> Dictionary:
 	var nearest := {}
-	var radius := 2.0
+	var radius := REACH
 	for entry in pickups + actions:
 		if entry.has("code") and not _available(entry):
 			continue
@@ -612,26 +763,29 @@ func tap(screen: Vector2) -> bool:
 		if entry.has("code") and not _available(entry):
 			continue
 		var node: Node3D = entry["target"]
-		if not node.visible:
+		if not entry.has("item") and pos.distance_to(entry["pos"]) > REACH:
 			continue
-		var point := node.global_position + Vector3.UP * (.16 if entry.has("item") else 0.0)
+		var point := node.global_position
 		var distance: float = game.cam.unproject_position(point).distance_to(screen)
 		if distance < range_px:
 			range_px = distance
 			chosen = entry
 	if chosen.is_empty():
 		return false
-	if pos.distance_to(chosen["pos"]) > 2.1:
+	if pos.distance_to(chosen["pos"]) > REACH:
 		life._notify("Aproxime-se para interagir.")
 		return true
 	_activate(chosen)
 	return true
 
 func interact() -> void:
-	_activate(_nearest())
+	if not posture.is_empty():
+		posture = ""
+	else:
+		_activate(_nearest())
 
 func _activate(entry: Dictionary) -> void:
-	if entry.is_empty() or game.menu_open or pos.distance_to(entry["pos"]) > 2.1:
+	if entry.is_empty() or game.menu_open or pos.distance_to(entry["pos"]) > REACH:
 		return
 	if entry.has("item"):
 		if life.take_interior(str(site["id"]),entry["item"]):
@@ -642,15 +796,20 @@ func _activate(entry: Dictionary) -> void:
 		"exit": game._exit_interior()
 		"window": game._exit_interior(true)
 		"up","down":
-			floor_index = clampi(floor_index + (1 if entry["code"] == "up" else -1),0,levels-1)
+			var going_up: bool = entry["code"] == "up"
+			floor_index = clampi(floor_index + (1 if going_up else -1),0,levels-1)
 			_build_floor()
+			for stair in actions:
+				if stair["code"] == ("down" if going_up else "up"):
+					pos = _put_inside(stair["pos"] + Vector2(0,-.85))
+					break
 		"wash":
 			life.dirty_hands = false
 			life._notify("Mãos lavadas.")
 			life.save()
 		"seat","bed":
 			posture = "" if posture == entry["code"] else str(entry["code"])
-			posture_at = entry["pos"] + Vector2(.07,.24)
+			posture_at = entry["anchor"]
 		"survey": life._survey(str(site["id"]))
 		"shelter": life._shelter_menu()
 
@@ -662,20 +821,16 @@ func _direction(screen: Vector2) -> int:
 func update_home_avatar(delta: float) -> void:
 	var room: Node3D = game.home
 	var original: Node3D = room.avatar["node"]
-	if game.intro_state != 0:
-		original.show()
-		if is_instance_valid(home_pawn):
-			home_pawn.hide()
-			home_hand.hide()
-		return
 	original.hide()
 	if not is_instance_valid(home_pawn):
 		home_pawn = Sprite3D.new()
 		home_pawn.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		home_pawn.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 		home_pawn.region_enabled = true
-		home_pawn.offset.y = FRAME.y*.5-3
-		home_pawn.pixel_size = .033
+		home_pawn.offset.y = 19
+		home_pawn.pixel_size = PERSON_PIXEL
+		home_pawn.no_depth_test = true
+		home_pawn.render_priority = 8
 		room.add_child(home_pawn)
 		home_hand = Sprite3D.new()
 		home_hand.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -687,15 +842,16 @@ func update_home_avatar(delta: float) -> void:
 		home_facing = _direction(Vector2(movement.x-movement.y,movement.x+movement.y))
 	home_previous = current
 	home_pawn.show()
-	home_pawn.texture = _actor_texture("walk" if movement.length_squared() > .000004 else "idle")
-	home_phase += delta * 10.0
-	var frames := maxi(1,floori(float(home_pawn.texture.get_width()) / FRAME.x))
-	home_pawn.region_rect = Rect2((int(home_phase)%frames)*FRAME.x,home_facing*FRAME.y,FRAME.x,FRAME.y)
+	home_pawn.texture = game.walker.texture
+	home_phase += delta * 8.0
+	var frame := int(home_phase)%4 if movement.length_squared() > .000004 else 0
+	var row := 320 if home_facing in [0,1,2,3] else 360
+	home_pawn.region_rect = Rect2(frame*FRAME.x,row,FRAME.x,FRAME.y)
 	home_pawn.position = _v(current)
 	var icon: Texture2D = life.icons.get(life.equipped)
 	home_hand.texture = icon
-	home_hand.visible = icon != null
-	if icon != null:
+	home_hand.visible = icon != null and game.intro_state == 0
+	if home_hand.visible:
 		home_hand.pixel_size = .33 / maxf(icon.get_width(),icon.get_height())
 		home_hand.position = home_pawn.position + game.cam.global_basis.x*.29 + Vector3.UP*.78
 

@@ -235,7 +235,7 @@ func _build_room() -> void:
 			var col := tc1 if (ix + iz) % 2 == 0 else tc2
 			_box(Vector3(1.0, 0.1, 1.0), Vector3(ix + 0.5, -0.05, iz + 0.5), col, room)
 	var h := WALL_H * 0.5
-	var wc := Color(0.74, 0.60, 0.44)
+	var wc := Color("#a09681")
 	var wf := WALL_T * 0.5
 	var sk := Color(0.45, 0.30, 0.20)
 	# só as duas paredes de trás (a câmera fica do lado de fora da frente)
@@ -244,16 +244,16 @@ func _build_room() -> void:
 	# rodapé
 	_box(Vector3(ROOM, 0.12, 0.04), Vector3(ROOM * 0.5, 0.06, wf + 0.02), sk, room)
 	_box(Vector3(0.04, 0.12, ROOM), Vector3(wf + 0.02, 0.06, ROOM * 0.5), sk, room)
-	# quadro-negro com moldura na parede do fundo esquerda
-	_box(Vector3(1.9, 1.1, 0.05), Vector3(1.6, 1.5, wf + 0.03), Color(0.14, 0.2, 0.17), room)
-	_box(Vector3(2.0, 1.2, 0.03), Vector3(1.6, 1.5, wf + 0.015), Color(0.35, 0.22, 0.12), room)
-	# quadro colorido na parede direita
-	_box(Vector3(0.05, 0.9, 1.3), Vector3(wf + 0.015, 1.6, 3.4), Color(0.75, 0.42, 0.2), room)
-	_box(Vector3(0.03, 0.7, 1.1), Vector3(wf + 0.03, 1.6, 3.4), Color(0.25, 0.5, 0.65), room)
-	# janela e tomada
-	_box(Vector3(0.05, 0.9, 0.9), Vector3(4.2, 1.7, wf + 0.015), Color(0.4, 0.62, 0.75), room)
-	_box(Vector3(2.2, 0.02, 1.5), Vector3(2.6, 0.01, 2.8), Color(0.45, 0.2, 0.2), room)
-	_box(Vector3(1.9, 0.022, 1.2), Vector3(2.6, 0.012, 2.8), Color(0.6, 0.5, 0.36), room)
+	# Madeira e vidro ocupam a face interna da parede; a cama fica na zona lateral.
+	_box(Vector3(1.53,1.02,.08),Vector3(3.13,1.57,wf+.052),Color("#514b41"),room)
+	_box(Vector3(1.36,.86,.08),Vector3(3.13,1.57,wf+.091),Color("#769cab"),room)
+	_box(Vector3(.064,.86,.09),Vector3(3.13,1.57,wf+.131),Color("#d7c0a0"),room)
+	_box(Vector3(1.36,.05,.09),Vector3(3.13,1.57,wf+.131),Color("#d7c0a0"),room)
+	_box(Vector3(1.66,.08,.26),Vector3(3.13,1.01,wf+.156),Color("#79644b"),room)
+	_box(Vector3(.052,.53,.89),Vector3(wf+.031,1.62,2.46),Color("#6b5946"),room)
+	_box(Vector3(.052,.38,.74),Vector3(wf+.069,1.62,2.46),Color("#7d8c77"),room)
+	_box(Vector3(1.95,.016,1.37),Vector3(3.32,.012,3.55),Color("#654a45"),room)
+	_box(Vector3(1.76,.017,1.18),Vector3(3.32,.02,3.55),Color("#7b6555"),room)
 	furn_root = Node3D.new()
 	furn_root.name = "Moveis"
 	add_child(furn_root)

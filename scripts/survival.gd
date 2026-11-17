@@ -154,6 +154,13 @@ func setup(city_game: Node) -> void:
 	_apply_outfit()
 	for item in ITEM_NAMES:
 		icons[item] = EQUIPMENT_ART[item] if EQUIPMENT_ART.has(item) else _texture(item)
+		if icons[item] == null:
+			icons[item] = _supplies_icon(item)
+		if icons[item] != null:
+			var image: Image = icons[item].get_image()
+			var rect := image.get_used_rect()
+			if rect.has_area():
+				icons[item] = ImageTexture.create_from_image(image.get_region(rect))
 	if active_vehicle < 0:
 		game.on_foot = true
 	game.walker.visible = game.on_foot
@@ -324,43 +331,86 @@ func inventory() -> void:
 	_inventory_menu()
 
 
-func _inventory_menu() -> void:
+func _inventory_menu(selected := "") -> void:
 	_open_panel("inventory", "Mochila · %d/%d" % [_bag_count(), CAPACITY])
-	var equipped_name := "Punhos" if equipped == "fist" else str(ITEM_NAMES[equipped])
-	if equipped == "pistol":
-		equipped_name += " · Munição ×%d" % int(bag.get("ammo", 0))
-	_line("Na mão: " + equipped_name)
+	var profile := HBoxContainer.new()
+	body.add_child(profile)
+	var preview := TextureRect.new()
+	var portrait := AtlasTexture.new()
+	portrait.atlas = game.walker.texture
+	portrait.region = Rect2(0,320,32,40)
+	preview.texture = portrait
+	preview.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	preview.custom_minimum_size = Vector2(68,82)
+	profile.add_child(preview)
+	var identity := Label.new()
+	identity.text = "%s\nMão · %s\nRoupa · %s" % [game.home.cfg.get("nome","Sobrevivente"),
+		ITEM_NAMES.get(equipped,"Punhos"),ITEM_NAMES.get(outfit,"Roupa inicial")]
+	identity.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	identity.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	profile.add_child(identity)
+	var grid := GridContainer.new()
+	grid.columns = 5
+	grid.add_theme_constant_override("h_separation",5)
+	grid.add_theme_constant_override("v_separation",5)
+	body.add_child(grid)
+	var occupied := 0
+	for item in ITEM_NAMES:
+		var count := int(bag.get(item,0))
+		if count <= 0:
+			continue
+		occupied += 1
+		var slot := _item_slot(grid,item,"×%d" % count)
+		slot.button_pressed = item == selected
+		slot.pressed.connect(_inventory_menu.bind(item))
+	for i in maxi(0,CAPACITY-occupied):
+		_item_slot(grid,"","")
+	if not selected.is_empty() and bag.has(selected):
+		_line("%s ×%d" % [ITEM_NAMES[selected],bag[selected]])
+		if WEAPONS.has(selected):
+			if selected == equipped:
+				_button("Guardar arma",_equip.bind("fist"),"fist")
+			else:
+				_button("Equipar",_equip.bind(selected),selected)
+		elif CONSUMABLES.has(selected) or selected in ["fuel","noise_maker"]:
+			_button("Usar",_use.bind(selected),selected)
+		elif selected == "manual":
+			_button("Estudar",_study_manual,selected)
+		elif CLOTHES.has(selected):
+			_button("Voltar à roupa inicial" if selected == outfit else "Vestir",
+				_change_outfit.bind("" if selected == outfit else selected),selected)
+	elif equipped != "fist":
+		_button("Guardar arma",_equip.bind("fist"),"fist")
 	_button("Roda de itens", quick_wheel)
 	_button("Fabricação e habilidades", _craft_menu.bind(_inventory_menu))
 	_button("Diário de missões", _journal.bind(_inventory_menu))
-	if equipped != "fist":
-		_button("Guardar arma · Usar punhos", _equip.bind("fist"), "fist")
-	for item in WEAPONS:
-		if item == equipped or not bag.has(item):
-			continue
-		var caption := "Equipar %s" % ITEM_NAMES[item]
-		if item == "pistol":
-			caption += " · Munição ×%d" % int(bag.get("ammo", 0))
-		_button(caption, _equip.bind(item), item)
-	for item in ITEM_NAMES:
-		var count := int(bag.get(item, 0))
-		if count == 0 or WEAPONS.has(item):
-			continue
-		var caption := "%s ×%d" % [ITEM_NAMES[item], count]
-		if CONSUMABLES.has(item) or item in ["fuel", "noise_maker"]:
-			_button("Usar " + caption, _use.bind(item), item)
-		elif item == "manual":
-			_button("Estudar " + caption, _study_manual)
-		elif CLOTHES.has(item):
-			var verb := "Vestida · " if item == outfit else "Vestir "
-			if item == outfit:
-				_line(verb + caption)
-			else:
-				_button(verb + caption, _change_outfit.bind(item))
-		else:
-			_line(caption)
-	if _bag_count() == 0:
-		_line("Mochila vazia.")
+
+
+func _item_slot(parent: Container, item: String, quantity: String) -> Button:
+	var slot := Button.new()
+	slot.custom_minimum_size = Vector2(46,47)
+	slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slot.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	slot.icon = icons.get(item,EQUIPMENT_ART.get(item))
+	slot.expand_icon = true
+	slot.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	slot.add_theme_constant_override("icon_max_width",29)
+	slot.tooltip_text = ITEM_NAMES.get(item,"")
+	slot.toggle_mode = true
+	slot.disabled = item.is_empty()
+	var amount := Label.new()
+	amount.text = quantity
+	amount.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	amount.add_theme_font_size_override("font_size",11)
+	amount.add_theme_color_override("font_shadow_color",Color.BLACK)
+	amount.add_theme_constant_override("shadow_offset_y",1)
+	slot.add_child(amount)
+	amount.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	amount.position += Vector2(-4,-1)
+	parent.add_child(slot)
+	return slot
 
 
 func _equip(item: String) -> void:
@@ -408,7 +458,7 @@ func vehicle_caption() -> String:
 	if not game.on_foot:
 		return "Descer"
 	var index := _nearest_vehicle()
-	return "Entrar" if index == active_vehicle else "Roubar"
+	return "Inspecionar" if index >= 0 and not _vehicle_needs(index).is_empty() else ("Entrar" if index == active_vehicle else "Roubar")
 
 
 func toggle_vehicle() -> void:
@@ -432,6 +482,9 @@ func toggle_vehicle() -> void:
 	var index := _nearest_vehicle()
 	if index < 0:
 		return
+	if not _vehicle_needs(index).is_empty():
+		_inspect_car(index)
+		return
 	if index != active_vehicle:
 		var info: Dictionary = game.parked_vehicles[index]
 		var was_stolen := taken.has(str(index))
@@ -446,7 +499,7 @@ func toggle_vehicle() -> void:
 		active_vehicle = index
 		game.car_pos = info["pos"]
 		game.car_heading = float(info["heading"]) + float(info["axis_offset"])
-		fuel = float(info.get("fuel", 16.0 + float(index % 40)))
+		fuel = _vehicle_fuel(info)
 		taken[str(index)] = _vehicle_record(info)
 		info["node"].hide()
 		game._swap_car(info["path"])
@@ -575,7 +628,7 @@ func _update_hand(delta: float) -> void:
 		tilt = lift * (0.8 if item == "water" else -0.3)
 		body_shift.y = -lift * (2.0 if item == "med" else 1.0)
 		if texture != null:
-			scale_px = 0.68 / maxf(texture.get_width(), texture.get_height())
+			scale_px = 0.40 / maxf(texture.get_width(), texture.get_height())
 	elif acting:
 		var impact: float = WEAPONS[item]["impact"]
 		if item == "pistol":
@@ -747,7 +800,7 @@ func _open_panel(kind: String, title: String) -> void:
 func _position_panel() -> void:
 	var viewport := get_viewport().get_visible_rect().size
 	var width := minf(490, viewport.x - 32)
-	var height := clampf(body.get_combined_minimum_size().y + 94.0, 160.0, minf(330.0, viewport.y * 0.57))
+	var height := clampf(body.get_combined_minimum_size().y + 94.0, 160.0, minf(615.0, viewport.y * 0.86) if menu_kind in ["inventory","craft"] else minf(330.0, viewport.y * 0.57))
 	panel.size = Vector2(width, height)
 	panel.position = (viewport - panel.size) * 0.5
 
@@ -765,7 +818,8 @@ func _button(caption: String, action: Callable, item := "") -> Button:
 	var btn := Button.new()
 	btn.text = caption
 	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	btn.icon = icons.get(item)
+	btn.icon = icons.get(item,EQUIPMENT_ART.get(item))
+	btn.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	btn.expand_icon = true
 	btn.add_theme_constant_override("icon_max_width", 32)
 	btn.custom_minimum_size.y = 46
@@ -1233,13 +1287,23 @@ func _craft_menu(back: Callable) -> void:
 	for skill in SKILLS:
 		_line("%s · nível %d · %d XP" % [SKILLS[skill], _skill_level(skill), int(skill_xp[skill])])
 	for recipe in RECIPES:
-		var materials := PackedStringArray()
+		var requirements := HBoxContainer.new()
+		body.add_child(requirements)
 		for item in recipe["inputs"]:
-			materials.append("%s %d/%d" % [ITEM_NAMES[item], int(bag.get(item, 0)), int(recipe["inputs"][item])])
+			var needed: int = recipe["inputs"][item]
+			var owned := int(bag.get(item,0))
+			var ingredient := _item_slot(requirements,item,"%d/%d" % [owned,needed])
+			ingredient.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			ingredient.focus_mode = Control.FOCUS_NONE
+			ingredient.modulate = Color("#ffb0a2") if owned < needed else Color("#c7e8cf")
+		if not str(recipe["tool"]).is_empty():
+			var tool: String = recipe["tool"]
+			var tool_slot := _item_slot(requirements,tool,"1/1" if bag.has(tool) else "0/1")
+			tool_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			tool_slot.focus_mode = Control.FOCUS_NONE
 		var where := " · Bancada de casa" if recipe["home"] else ""
-		var tool := " · Ferramenta: " + str(ITEM_NAMES[recipe["tool"]]) if not str(recipe["tool"]).is_empty() else ""
-		_line("%s · %s nível %d%s%s" % [" + ".join(materials), SKILLS[recipe["skill"]], recipe["level"], where, tool])
-		var button := _button("Fabricar " + str(ITEM_NAMES[recipe["out"]]), _craft.bind(recipe, back))
+		_line("%s · Nível %d%s" % [SKILLS[recipe["skill"]],recipe["level"],where])
+		var button := _button("Fabricar " + str(ITEM_NAMES[recipe["out"]]), _craft.bind(recipe, back),recipe["out"])
 		button.disabled = not _can_craft(recipe)
 	_button("Voltar", back)
 
@@ -1412,6 +1476,63 @@ func _nearest_vehicle() -> int:
 			best = d
 			found = i
 	return found
+
+
+func _vehicle_requirements(index: int) -> Dictionary:
+	match index % 7:
+		1: return {"parts":1}
+		2: return {"fuel":1}
+		3: return {"parts":2,"fuel":1}
+	return {}
+
+
+func _vehicle_needs(index: int) -> Dictionary:
+	var info: Dictionary = game.parked_vehicles[index]
+	if taken.has(str(index)) or info.get("serviced",false):
+		return {}
+	return _vehicle_requirements(index)
+
+
+func _vehicle_fuel(info: Dictionary) -> float:
+	return float(info.get("fuel",16.0 + float(int(info["index"]) % 40)))
+
+
+func _inspect_car(index: int) -> void:
+	_open_panel("vehicle","Condição do veículo")
+	var needs_service := _vehicle_needs(index)
+	var can_service := true
+	for item in needs_service:
+		var needed: int = needs_service[item]
+		_line("%s · %s %d/%d" % ["Motor precisa de reparo" if item == "parts" else "Tanque vazio", ITEM_NAMES[item],bag.get(item,0),needed])
+		if int(bag.get(item,0)) < needed:
+			can_service = false
+		if supply_found and quest < QUESTS.size() and QUESTS[quest]["item"] == item and int(bag.get(item,0)) <= needed:
+			can_service = false
+			_line("Uma unidade está reservada para a missão.")
+	var repair := _button("Preparar veículo",_service_car.bind(index))
+	repair.disabled = not can_service
+
+
+func _service_car(index: int) -> void:
+	if menu_kind != "vehicle" or _nearest_vehicle() != index:
+		return
+	var requirements := _vehicle_needs(index)
+	if requirements.is_empty():
+		return
+	for item in requirements:
+		var reserved := int(supply_found and quest < QUESTS.size() and QUESTS[quest]["item"] == item)
+		if int(bag.get(item,0)) < int(requirements[item]) + reserved:
+			return
+	for item in requirements:
+		for i in int(requirements[item]):
+			_remove_item(item)
+	var info: Dictionary = game.parked_vehicles[index]
+	info["fuel"] = 35.0 if requirements.has("fuel") else _vehicle_fuel(info)
+	info["serviced"] = true
+	if requirements.has("parts"):
+		_gain_skill("workshop",1)
+	close()
+	toggle_vehicle()
 
 
 func _vehicle_record(v: Dictionary) -> Dictionary:
@@ -1784,6 +1905,38 @@ func _duration(seconds: float) -> String:
 	if s >= 3600:
 		return "%d h %02d min" % [floori(float(s) / 3600.0), floori(float(s % 3600) / 60.0)]
 	return "%d min %02d s" % [floori(float(s) / 60.0), s % 60]
+
+
+func _supplies_icon(item: String) -> Texture2D:
+	if item == "noise_maker":
+		return preload("res://assets/interiores/radio.png")
+	var designs := {
+		"cloth":["#ba9bb0",[".#####..","###++##.","##+++##.","##+++###",".#######","...####."]],
+		"wood":["#ae7851",["...#####","..##++##",".##++##.","##++##..","#####+..","####...."]],
+		"bandage":["#efe1c2",[".######.","##++++##","##+##+##","##++++##",".######."]],
+		"dirty_water":["#9d8a43",["...++...","...##...","..####..","..#+##..","..#+##..","..####.."]],
+		"manual":["#558b7f",[".######.",".#++++#.",".#++###.",".#++++#.",".######.",".++++++."]],
+		"jacket":["#83956b",["..#++#..",".######.","###++###","###++###",".##++##.","..####.."]],
+		"shirt":["#6eabde",["..#++#..",".######.","###++###",".##++##.","..####.."]],
+		"coat":["#d79b54",["..#++#..",".######.","###++###","###++###",".##++##.","..####..","..####.."]],
+	}
+	if not designs.has(item):
+		return null
+	var design: Array = designs[item]
+	var tone := Color(design[0])
+	var bitmap := Image.create_empty(10,10,false,Image.FORMAT_RGBA8)
+	var rows: Array = design[1]
+	for y in rows.size():
+		for x in 8:
+			var pixel: String = rows[y][x]
+			if pixel != ".":
+				bitmap.set_pixel(x+1,y+2,tone.darkened(.5))
+	for y in rows.size():
+		for x in 8:
+			var pixel: String = rows[y][x]
+			if pixel != ".":
+				bitmap.set_pixel(x+1,y+1,tone.lightened(.35) if pixel == "+" else tone)
+	return ImageTexture.create_from_image(bitmap)
 
 
 func _texture(key: String) -> Texture2D:

@@ -338,13 +338,14 @@ func _ready() -> void:
 	_setup_survival_places()
 	_fill_abandoned_car_gaps()
 	_distribute_abandoned_cars()
+	_rescale_bus_slots()
 	_build_ruined_streets()
 	walker = _person_sprite(4)
 	walker_outline = walker.duplicate()
 	walker_outline.no_depth_test = true
 	walker_outline.shaded = false
 	walker_outline.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
-	walker_outline.modulate = Color(1.0, 0.91, 0.76, 0.75)
+	walker_outline.modulate = Color.WHITE
 	walker_outline.render_priority = 8
 	walker_outline.hide()
 	walker.add_child(walker_outline)
@@ -427,13 +428,15 @@ func _process(delta: float) -> void:
 	street_label.show()
 	_update_signs()
 	var actor_height := Vector3.UP * (1.3 if on_foot else 0.85)
-	var covered := on_foot and _foot_occluded(walker.position + actor_height)
+	var covered := on_foot and _person_hidden(walker)
 	walker_outline.visible = covered
 	if covered:
 		walker_outline.texture = walker.texture
 		walker_outline.region_rect = walker.region_rect
 		walker_outline.offset = walker.offset
-	player_marker.visible = not on_foot or covered
+	if is_instance_valid(survival.hand):
+		survival.hand.no_depth_test = covered
+	player_marker.visible = not on_foot
 	player_marker.position = cam.unproject_position((walker.position if on_foot else car_root.position) + actor_height)
 	player_marker.queue_redraw()
 	mm_t += delta
@@ -1429,7 +1432,7 @@ func _walk_move(motion: Vector2) -> void:
 
 
 func _walk_blocked(at: Vector2) -> bool:
-	return not _in_area(at) or _in_water(at) or not _ground_clear(at, _rectangle(at, Vector2.DOWN, 0.82, 0.82), false)
+	return not _in_area(at) or _in_water(at) or not _ground_clear(at, _rectangle(at, Vector2.DOWN, 1.04, 1.04), false)
 
 
 func _recover_walk_position(at: Vector2) -> Vector2:
@@ -1522,13 +1525,19 @@ func _car_blocked(p: Vector2) -> bool:
 	if not _in_area(p) or _in_water(p):
 		return true
 	var forward := Vector2.from_angle(car_heading)
-	return not _ground_clear(p, _rectangle(p, forward, _active_car_width(), CAR_LENGTH), true)
+	return not _ground_clear(p, _rectangle(p, forward, _active_car_width(), _active_car_length()), true)
 
 
 func _active_car_width() -> float:
 	if survival.active_vehicle >= 0:
 		return parked_vehicles[survival.active_vehicle]["width"]
 	return 1.7
+
+
+func _active_car_length() -> float:
+	if survival.active_vehicle >= 0:
+		return float(parked_vehicles[survival.active_vehicle].get("length", CAR_LENGTH))
+	return CAR_LENGTH
 
 
 func _ground_clear(at: Vector2, shape: PackedVector2Array, driving: bool) -> bool:
@@ -1542,19 +1551,19 @@ func _ground_clear(at: Vector2, shape: PackedVector2Array, driving: bool) -> boo
 			for obstacle in obstacle_cells.get(Vector2i(x, y), []):
 				if bounds.intersects(obstacle["bounds"]) and not Geometry2D.intersect_polygons(shape, obstacle["shape"]).is_empty():
 					return false
-	for index in _nearby_cars(at, 5.5):
+	for index in _nearby_cars(at, 10.0):
 		if index == survival.active_vehicle:
 			continue
 		var info := parked_vehicles[index]
 		var point: Vector2 = info["pos"]
-		if at.distance_squared_to(point) > 5.5 * 5.5:
+		if at.distance_squared_to(point) > 10.0 * 10.0:
 			continue
 		var angle: float = info["heading"] + float(info["axis_offset"])
-		var footprint := _rectangle(point, Vector2.from_angle(angle), info["width"], CAR_LENGTH)
+		var footprint := _rectangle(point, Vector2.from_angle(angle), info["width"], info.get("length", CAR_LENGTH))
 		if not Geometry2D.intersect_polygons(shape, footprint).is_empty():
 			return false
-	if not driving and survival.active_vehicle >= 0 and at.distance_squared_to(car_pos) < 4.0 * 4.0:
-		var footprint := _rectangle(car_pos, Vector2.from_angle(car_heading), _active_car_width(), CAR_LENGTH)
+	if not driving and survival.active_vehicle >= 0 and at.distance_squared_to(car_pos) < 6.0 * 6.0:
+		var footprint := _rectangle(car_pos, Vector2.from_angle(car_heading), _active_car_width(), _active_car_length())
 		if not Geometry2D.intersect_polygons(shape, footprint).is_empty():
 			return false
 	return true
@@ -1628,8 +1637,8 @@ func _swap_car(path: String) -> void:
 			paint = Color("#e0c8a4")
 		"Bus.glb":
 			paint = Color("#9eae69")
-	var vehicle := MeshInstance3D.new()
 	if path.get_file() in ["Car_Coral.glb", "Car_Blue.glb"]:
+		var vehicle := MeshInstance3D.new()
 		vehicle.mesh = _detective_car_mesh(paint)
 		var body := _mat(Color.WHITE, true)
 		body.emission_enabled = true
@@ -1642,7 +1651,7 @@ func _swap_car(path: String) -> void:
 		var longest := maxf(ab.size.x, ab.size.z)
 		if longest < 0.01:
 			return
-		var scale_factor := CAR_LENGTH / longest
+		var scale_factor := _active_car_length() / longest
 		var inst := _scene(path).instantiate() as Node3D
 		var pivot := Node3D.new()
 		car_root.add_child(pivot)
@@ -1664,8 +1673,8 @@ func _swap_car(path: String) -> void:
 	var roof_y := 1.70
 	if path.get_file() not in ["Car_Coral.glb", "Car_Blue.glb"]:
 		var ab := _proto_aabb(path)
-		roof_y = ab.size.y * CAR_LENGTH / maxf(ab.size.x, ab.size.z) + 0.08
-	_face_c(st, Vector3(0.0, roof_y, -0.05), Vector3.RIGHT * 0.87, Vector3.BACK * 1.98, Color.WHITE)
+		roof_y = ab.size.y * _active_car_length() / maxf(ab.size.x, ab.size.z) + 0.08
+	_face_c(st, Vector3(0.0, roof_y, -0.05), Vector3.RIGHT * (_active_car_width() * .47), Vector3.BACK * (_active_car_length() * .45), Color.WHITE)
 	proxy.mesh = st.commit()
 	proxy.material_override = silhouette
 	proxy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -2216,6 +2225,7 @@ func _intro_cycle(key: String, step: int, count: int) -> void:
 
 func _intro_refresh() -> void:
 	home._refresh_rows()
+	survival._apply_outfit()
 	for k in intro_lbls.keys():
 		var src: Label = home.row_labels[k]["label"]
 		(intro_lbls[k] as Label).text = src.text
@@ -2593,16 +2603,27 @@ func _on_option(opt: String) -> void:
 
 # ---------- interface ----------
 
+func _person_hidden(sprite: Sprite3D) -> bool:
+	var right := cam.global_basis.x
+	for height in [.43,1.27,2.12]:
+		for side in [-.33,.33]:
+			if _foot_occluded(sprite.global_position + Vector3.UP * height + right * side):
+				return true
+	return false
+
+
 func _foot_occluded(at: Vector3) -> bool:
 	var sight := cam.global_basis.z
 	var limit := minf(64.0, (cam.global_position - at).dot(sight))
 	if limit <= 1.0:
 		return false
-	for n in range(1, ceili(limit), 2):
-		var sample := at + sight * float(n)
+	var n := .32
+	while n < limit:
+		var sample := at + sight * n
 		for building in _bpolys_at(Vector2(sample.x, sample.z)):
 			if float(building["h"]) >= sample.y and Geometry2D.is_point_in_polygon(Vector2(sample.x, sample.z), building["pts"]):
 				return true
+		n += .65 if n < 7.0 else 1.75
 	return false
 
 
@@ -2645,6 +2666,10 @@ func _update_signs() -> void:
 					candidates.append({"d": d, "pos": screen, "text": sign["text"]})
 	candidates.sort_custom(func(a, b): return a["d"] < b["d"])
 	var occupied: Array[Rect2] = []
+	if on_foot:
+		var head := cam.unproject_position(walker.global_position + Vector3.UP * 2.14)
+		var feet := cam.unproject_position(walker.global_position)
+		occupied.append(Rect2(feet,Vector2.ZERO).expand(head).grow(14))
 	var index := 0
 	for sign in sign_labels:
 		sign.hide()
@@ -3275,6 +3300,10 @@ func _place_street_object(path: String, q: Vector2, dir: Vector2, scale_factor: 
 	if scale_factor <= 0.0:
 		return false
 	var yaw := atan2(-dir.x, -dir.y)
+	if not align_long_axis and "bench" in path.to_lower():
+		yaw = atan2(dir.x, dir.y)
+		if ab.size.z > ab.size.x:
+			yaw += PI * .5
 	if align_long_axis and ab.size.x > ab.size.z:
 		yaw += PI * 0.5
 	var heading := Vector2(sin(yaw), cos(yaw))
@@ -3296,6 +3325,42 @@ func _place_street_object(path: String, q: Vector2, dir: Vector2, scale_factor: 
 	else:
 		_index_obstacle(shape)
 	return true
+
+
+func _rescale_bus_slots() -> void:
+	for info in parked_vehicles:
+		if str(info["path"]).get_file() != "Bus.glb":
+			continue
+		var at: Vector2 = info["pos"]
+		var angle: float = info["heading"] + float(info["axis_offset"])
+		var forward := Vector2.from_angle(angle)
+		var bus_length := 8.7
+		var bus_bounds := _proto_aabb(info["path"])
+		var bus_width := bus_length * minf(bus_bounds.size.x,bus_bounds.size.z) / maxf(bus_bounds.size.x,bus_bounds.size.z)
+		var shape := _rectangle(at,forward,bus_width,bus_length)
+		var fits := road_clearance.is_clear(shape) and _buildings_clear(shape)
+		for index in _nearby_cars(at,10.0):
+			var other: Dictionary = parked_vehicles[index]
+			if other["index"] != info["index"] and at.distance_squared_to(other["pos"]) < 5.4 * 5.4:
+				fits = false
+				break
+		var path: String = info["path"] if fits else PLAYER_CAR
+		var length := bus_length if fits else CAR_LENGTH
+		var bounds := _proto_aabb(path)
+		var scale_factor := length / maxf(bounds.size.x,bounds.size.z)
+		var offset := PI*.5 if bounds.size.x > bounds.size.z else 0.0
+		var yaw := PI*.5 - (angle-offset)
+		var basis := Basis(Vector3.UP,yaw).scaled(Vector3.ONE*scale_factor)
+		var center := bounds.get_center()
+		var origin := Vector3(center.x,bounds.position.y,center.z)
+		var node := _scene(path).instantiate() as Node3D
+		node.transform = Transform3D(basis,Vector3(at.x,0,at.y)-basis*origin)
+		info["node"].hide()
+		info["node"].queue_free()
+		add_child(node)
+		info.merge({"node":node,"path":path,"basis":basis,"offset":origin,"length":length,
+			"heading":angle-offset,"original_heading":angle-offset,"axis_offset":offset,
+			"width":minf(bounds.size.x,bounds.size.z)*scale_factor},true)
 
 
 func _build_ruined_streets() -> void:
@@ -3344,7 +3409,12 @@ func _build_ruined_streets() -> void:
 				var point := center + Vector2.from_angle(random.randf()*TAU) * random.randf_range(11,38)
 				if not _street_asset_clear(point,occupied):
 					continue
-				if _place_street_object(path,point,Vector2.DOWN,(.64 if instruments[index] == "traffic_cone" else 1.21)/height,false):
+				var facing := Vector2.DOWN
+				if instruments[index] == "street_bench":
+					var nearest := _road_near(point)
+					if not nearest.is_empty():
+						facing = point.direction_to(nearest[0])
+				if _place_street_object(path,point,facing,(.64 if instruments[index] == "traffic_cone" else (.82 if instruments[index] == "street_bench" else 1.21))/height,false):
 					_bk_add(occupied,point)
 					placed += 1
 					break
@@ -3531,7 +3601,7 @@ func _scatter_props() -> void:
 					elif roll < 0.3 and props < 1500:
 						var path: String = kk[rng.randi() % kk.size()]
 						var ab := _proto_aabb(path)
-						if ab.size.y > 0.01 and _place_street_object(path, q, dir, rng.randf_range(0.65, 1.1) / ab.size.y, false):
+						if ab.size.y > 0.01 and _place_street_object(path, q, -nrm * side if "bench" in path else dir, rng.randf_range(0.65, 1.1) / ab.size.y, false):
 							props += 1
 				t += rng.randf_range(10.0, 18.0)
 	print("carros estacionados: ", parked, " objetos de rua: ", props)
@@ -3629,7 +3699,7 @@ func _place_personal_home() -> void:
 
 
 func survivor_texture(texture: Texture2D, use_initial_shirt: bool) -> Texture2D:
-	if not is_instance_valid(home) or not home.cfg.get("survival_created", false):
+	if not is_instance_valid(home):
 		return texture
 	var data: Dictionary = home.cfg
 	var image := texture.get_image()
