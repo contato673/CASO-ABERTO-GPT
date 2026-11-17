@@ -1,0 +1,5 @@
+/.godot/
+/assets/pack/
+/assets/chars/
+__pycache__/
+*.tmp
