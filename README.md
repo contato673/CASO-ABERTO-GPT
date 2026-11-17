@@ -26,7 +26,7 @@ Nos interiores, o saque aparece no cenário e a mochila continua disponível. As
 
 Os quadradinhos verdes no minimapa indicam carros próximos. Os encontros com sobreviventes são raros. Alguns fogem dos infectados e conversam com você, enquanto outros atacam. O minimapa mostra vias, carros e o objetivo ativo. Os infectados têm animações de caminhada e sons que vêm da posição deles na rua.
 
-Perto do Posto Barão, procure **Sua casa**, indicada pelo ícone azul no minimapa. Entre a pé para descansar e abrir o baú pessoal de 60 itens. O conteúdo do baú permanece após a derrota. No menu **Mobiliar**, use duas peças da mochila para montar um móvel e depois escolha onde colocá-lo. Móveis e aparência ficam salvos.
+Ao interagir com o **Posto Barão**, escolha **Entrar em casa** no mesmo menu das missões. Cada conta do Big Field tem seu próprio interior, com móveis e baú separados. Ao sair, você volta ao posto. No menu **Mobiliar**, use duas peças da mochila para montar um móvel e escolher onde colocá-lo. A casa é salva neste navegador ou aparelho.
 
 A campanha **A última transmissão** tem 16 missões de busca, entrega e reconhecimento. Os quatro contratos de abastecimento depois da campanha podem ser repetidos após 20 minutos. O diário está disponível na mochila, no Posto Barão e em casa. Mochila, necessidades, estoque, carros e reputação são salvos no dispositivo. A rede do abrigo é uma progressão local para um jogador.
 

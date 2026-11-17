@@ -358,7 +358,6 @@ func _ready() -> void:
 	walker.add_child(walker_outline)
 	walker.hide()
 	_build_fixed_people()
-	_place_personal_home()
 	add_child(alpha)
 	alpha.setup(self)
 	if alpha.endpoint.is_empty():
@@ -390,6 +389,10 @@ func _start_session(account: String) -> void:
 	elif not home.cfg.get("survival_created", false):
 		_intro_begin()
 	elif survival.resume_at_home:
+		on_foot = true
+		if not survival.at_home_access():
+			walk_pos = _recover_walk_position(survival.safe) if _walk_blocked(survival.safe) else survival.safe
+		walker.position = Vector3(walk_pos.x,.04,walk_pos.y)
 		_enter_home()
 
 
@@ -1788,7 +1791,7 @@ func _update_interior_camera(delta: float) -> void:
 
 
 func _enter_home(creation := false) -> void:
-	if in_home or (not creation and (menu_open or not on_foot or not survival.at_personal_home())):
+	if in_home or (not creation and (menu_open or interior.active or not survival.at_home_access())):
 		return
 	in_home = true
 	car_speed = 0.0
@@ -3745,46 +3748,6 @@ func _car_hits_traffic(p: Vector2) -> bool:
 
 # ---------- caso 1: sistema de quest (individual, com pistas e acusação) ----------
 
-func _place_personal_home() -> void:
-	var base: Dictionary = {}
-	for point in pois:
-		if str(point["id"]) == "central":
-			base = point
-			break
-	if base.is_empty():
-		return
-	var origin: Vector2 = base["npc_pos"]
-	var chosen := {}
-	var closest := INF
-	for building in building_polys:
-		var box: Rect2 = building["bb"]
-		var center_distance := origin.distance_to(box.get_center())
-		if building["use"] != "residence" or not building["site"].is_empty() or center_distance < 16.0 or center_distance > 80.0:
-			continue
-		var shape: PackedVector2Array = building["pts"]
-		for i in shape.size():
-			var a := shape[i]
-			var b := shape[(i + 1) % shape.size()]
-			var edge := a.lerp(b, 0.5)
-			var normal := a.direction_to(b).orthogonal()
-			for side in [-1.0, 1.0]:
-				var entrance := edge + normal * float(side) * 1.55
-				if _walk_blocked(entrance):
-					continue
-				var lane := _road_near(entrance, true)
-				if lane.is_empty() or entrance.distance_squared_to(lane[0]) > 18.0 * 18.0:
-					continue
-				var distance := origin.distance_to(entrance)
-				if distance < closest and distance > 14.0:
-					closest = distance
-					chosen = {"id":"personal_home", "name":"Sua casa", "x":entrance.x, "y":entrance.y,
-						"access_x":lane[0].x, "access_y":lane[0].y, "npc_pos":entrance, "context":"home"}
-	if not chosen.is_empty():
-		pois.append(chosen)
-		var entry: Vector2 = chosen["npc_pos"]
-		_register_sign("Sua casa", Vector3(entry.x, 3.1, entry.y))
-
-
 func avatar_model() -> int:
 	return clampi(int(home.cfg.get("avatar_model",PEOPLE_ART.MODELS.size())),0,PEOPLE_ART.MODELS.size())
 
@@ -4171,13 +4134,6 @@ func _draw_minimap() -> void:
 				minimap.draw_rect(Rect2(point - Vector2(3.5, 2.5), Vector2(7, 5)), Color("#7cdfb5"))
 	if on_foot and survival.active_vehicle >= 0:
 		minimap.draw_circle(_mm_pos(car_pos), 4.0, Color("#ffd284"))
-	if survival.sites.has("personal_home"):
-		var home_point := _mm_pos(survival.sites["personal_home"]["npc_pos"])
-		if Rect2(Vector2(8, 8), sz - Vector2(16, 16)).has_point(home_point):
-			var house := PackedVector2Array([home_point + Vector2(-6, 0), home_point + Vector2(0, -6),
-				home_point + Vector2(6, 0), home_point + Vector2(4, 0), home_point + Vector2(4, 5),
-				home_point + Vector2(-4, 5), home_point + Vector2(-4, 0)])
-			minimap.draw_colored_polygon(house, Color("#9bd9ee"))
 	if alpha.live:
 		for person in alpha.people.values():
 			var sprite: Sprite3D = person["sprite"]

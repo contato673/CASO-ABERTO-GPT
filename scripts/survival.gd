@@ -342,9 +342,7 @@ func enter_nearby() -> void:
 	if game.menu_open or not can_enter_nearby():
 		return
 	opened = closest_site
-	if opened.get("context") == "home":
-		game._enter_home()
-	elif _stash(opened)["unlocked"]:
+	if _stash(opened)["unlocked"]:
 		game._enter_interior(opened)
 	else:
 		_loot_menu()
@@ -1208,6 +1206,8 @@ func _kind(p: Dictionary) -> String:
 
 func _shelter_menu() -> void:
 	_open_panel("shelter", "Abrigo · Posto Barão")
+	if at_home_access() and (not game.interior.active or game.interior.site.get("id") == "central"):
+		_button("Entrar em casa", _enter_home_from_post)
 	_line("O pátio está protegido. Aqui você pode descansar e entregar suprimentos.")
 	if quest < QUESTS.size() and supply_found and int(bag.get(QUESTS[quest]["item"], 0)) > 0:
 		_button("Entregar suprimento · " + str(QUESTS[quest]["title"]), _submit)
@@ -1253,8 +1253,20 @@ func _chest_menu(deposit: bool) -> void:
 	_button("Voltar à casa", _personal_home_menu)
 
 
-func at_personal_home() -> bool:
-	return not down and sites.has("personal_home") and game.walk_pos.distance_to(_entrance(sites["personal_home"])) < 7.5
+func at_home_access() -> bool:
+	return game.on_foot and not down and game.walk_pos.distance_to(safe) < 7.5
+
+
+func _enter_home_from_post() -> void:
+	if menu_kind != "shelter" or not at_home_access():
+		return
+	if game.interior.active:
+		if game.interior.site.get("id") != "central":
+			return
+		game._exit_interior()
+	else:
+		close()
+	game._enter_home()
 
 
 func _at_shelter() -> bool:
