@@ -87,6 +87,9 @@ var aabb_cache: Dictionary = {}
 var car_root: Node3D
 var car_pos := Vector2.ZERO
 var on_foot := false
+var survival = preload("res://scripts/survival.gd").new()
+var parked_vehicles: Array[Dictionary] = []
+var btn_attack: Button
 var walk_pos := Vector2.ZERO
 var walker: Sprite3D
 var walk_cycle := 0.0
@@ -293,6 +296,9 @@ func _ready() -> void:
 	roads = city["roads"]
 	pois = city["pois"]
 	_init_areas()
+	for point in pois:
+		if str(point["id"]) == "central":
+			point["name"] = "Abrigo · Posto Barão"
 	for lm in LANDMARKS:
 		var lp: Dictionary = (lm as Dictionary).duplicate()
 		lp["marco"] = true
@@ -305,61 +311,22 @@ func _ready() -> void:
 	_scatter_props()
 	_build_car()
 	road_route.build(roads)
-	_build_traffic()
-	_build_npcs()
 	ph = _detect_phone()
 	BTN_SZ = Vector2(170, 52) if ph else BTN_SZ
 	get_window().size_changed.connect(func(): ui_dirty = true)
 	_build_ui()
 	_build_touch_ui()
 	fps_on = OS.get_cmdline_user_args().has("--fpslog")
-	home = HOME_SCRIPT.new()
-	add_child(home)
-	home.request_enter.connect(_enter_home)
-	home.request_exit.connect(_exit_home)
-	home.leave()
-	home.cam = cam
-	home.neighbors = _neighbor_names()
-	money = home.money_now
-	home.money_delta.connect(_on_money_delta)
-	home.car_selected.connect(_swap_car)
-	if home.get_car_path() != PLAYER_CAR:
-		_swap_car(home.get_car_path())
-	_setup_case()
-	_build_fixed_people()
+	_setup_survival_places()
+	_fill_abandoned_car_gaps()
 	walker = _person_sprite(4)
 	walker.hide()
-	_start_music()
-	var st: Array = city["start"]
-	if st.size() >= 2:
-		car_pos = Vector2(float(st[0]), float(st[1]))
-	else:
-		car_pos = Vector2(float(pois[0]["x"]), float(pois[0]["y"]) + 40.0)
-	for p in pois:
-		if str(p["id"]) == "central" and p.has("access_x"):
-			var door := Vector2(float(p["access_x"]), float(p["access_y"]))
-			var lane := _road_near(door, true)
-			if not lane.is_empty():
-				var dir: Vector2 = lane[1]
-				var approach := _road_near(door - dir * 24.0, true)
-				if not approach.is_empty() and not _blocked(approach[0]):
-					car_pos = approach[0]
-					car_heading = atan2(dir.y, dir.x)
-			break
-	car_root.position = Vector3(car_pos.x, 0.0, car_pos.y)
-	car_root.rotation.y = atan2(cos(car_heading), sin(car_heading))
-	cam_focus = car_root.position
+	_build_fixed_people()
+	add_child(survival)
+	survival.setup(self)
+	cam_focus = walker.position
 	_update_camera(1.0)
-	intro_pending = int(home.cfg.get("intro_v", 0)) < 2
-	if intro_pending:
-		home.reset_all()
-		case_idx = 0
-		case_step = 0
-		case_done = false
-		clues = []
-		money = 500
-		home.money_now = 500
-		_save_case()
+	_start_music()
 
 
 func _pm(i: int) -> void:
@@ -371,89 +338,60 @@ func _pm(i: int) -> void:
 func _process(delta: float) -> void:
 	_fps_tick(delta)
 	_daynight_tick(delta)
-	prof_t = Time.get_ticks_usec()
-	prof_n += 1
 	if ui_dirty:
 		_layout_ui()
-	elif intro_pending:
-		intro_pending = false
-		_intro_begin()
 	_touch_vis()
-	if intro_state == 1 and home != null:
-		home.btn_menu.visible = false
-		home.btn_exit.visible = false
-	if in_home:
-		player_marker.visible = false
-		street_label.hide()
-		sign_layer.hide()
-		home.update(delta, _joy_home(joy_vec))
-		case_label.text = _case_text()
-		_update_camera(delta)
-		home.money_now = money
-		money_label.text = "R$ %d" % money
-		return
 	if not menu_open:
 		if on_foot:
 			_walk(delta)
 		else:
 			_drive(delta)
-	_pm(0)
 	_signals_update(delta)
-	_traffic_update(delta)
-	_pm(1)
-	_npc_update(delta)
-	_pm(2)
-	_update_poi()
-	_update_dialog(delta)
-	_pm(3)
+	survival.tick(delta)
 	_update_camera(delta)
 	_update_goal_arrow()
 	if street_last_pos.distance_squared_to(_actor_pos()) > 6.25:
 		street_last_pos = _actor_pos()
 		var street := _street_at(street_last_pos)
-		if street.is_empty() and on_foot and poi_index >= 0:
-			var address := str(pois[poi_index].get("address", ""))
-			street = address.get_slice(",", 0)
-		street_label.text = street if not street.is_empty() else "Via sem nome no mapa"
+		if street.is_empty() and survival.available():
+			street = str(survival.closest_site.get("address", "")).get_slice(",", 0)
+		street_label.text = street if not street.is_empty() else "Fora da via"
 	street_label.show()
 	_update_signs()
 	player_marker.visible = not on_foot
 	player_marker.position = cam.unproject_position(car_root.position + Vector3.UP * 0.85)
 	player_marker.queue_redraw()
-	_pm(4)
 	mm_t += delta
 	if mm_t >= 0.12:
 		mm_t = 0.0
 		minimap.queue_redraw()
 		nav_arrow.queue_redraw()
-	case_label.text = _case_text()
-	money_label.text = "R$ %d" % money
+	case_label.text = survival.objective_text()
+	if not ph and not menu_open and survival.available():
+		prompt_label.text = "[E] " + str(survival.closest_site["name"])
+		prompt_label.position.y = case_label.position.y + case_label.size.y + 6
+		prompt_label.show()
+	else:
+		prompt_label.hide()
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if survival.walk_location_click(event.position):
+			get_viewport().set_input_as_handled()
+		return
+	if event is InputEventScreenTouch and event.pressed:
+		if survival.walk_location_click(event.position):
+			get_viewport().set_input_as_handled()
+		return
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
-	if event.keycode == KEY_E and not menu_open and not in_home:
-		_on_touch_interact()
-	elif event.keycode == KEY_F and not menu_open and not in_home:
-		_toggle_car()
-	elif event.keycode == KEY_ESCAPE and ui_panel.visible:
-		_dismiss_dialog()
-	elif event.keycode == KEY_K and sun_ref != null:
-		sun_ref.shadow_enabled = not sun_ref.shadow_enabled
-		slow_n = -9999
-		print("sombras: ", sun_ref.shadow_enabled, " far ", cam.far, " near ", cam.near)
-	elif event.keycode == KEY_N:
-		time_shift = fposmod(time_shift + 3.0, 24.0)
-		dn_t = 99.0
-	elif event.keycode == KEY_F3 or event.keycode == KEY_P:
-		fps_on = not fps_on
-		if fps_label != null:
-			fps_label.visible = fps_on
-	elif event.keycode == KEY_T and not menu_open and not in_home:
-		_tour_next()
-	elif event.keycode == KEY_C and not menu_open:
-		_show_notebook()
+	match event.keycode:
+		KEY_E: _on_touch_interact()
+		KEY_F: _toggle_car()
+		KEY_I, KEY_C: _on_touch_notebook()
+		KEY_SPACE: survival.attack()
+		KEY_ESCAPE: survival.close()
 
 
 # ---------- carregamento de modelos ----------
@@ -891,7 +829,7 @@ func _off_sidewalk(c: Vector2, u: Vector2, L: float, D: float) -> Vector2:
 func _daynight_tick(delta: float) -> void:
 	dn_t += delta
 	if head_glow != null and is_instance_valid(car_root):
-		head_glow.visible = day_f < 0.45 and not in_home
+		head_glow.visible = day_f < 0.45 and car_root.visible
 		if head_glow.visible:
 			head_glow.position = car_root.position + Vector3(0.0, 0.1, 0.0)
 			head_glow.rotation.y = car_root.rotation.y + PI
@@ -1334,29 +1272,7 @@ func _person_sprite(variant: int) -> Sprite3D:
 
 
 func _toggle_car() -> void:
-	if in_home or menu_open:
-		return
-	if on_foot:
-		if walk_pos.distance_to(car_pos) > 4.2:
-			return
-		on_foot = false
-		walker.hide()
-	else:
-		if absf(car_speed) > 2.0:
-			return
-		var normal := Vector2(cos(car_heading), sin(car_heading)).orthogonal()
-		for side in [1.0, -1.0]:
-			var door: Vector2 = car_pos + normal * (float(side) * 1.85)
-			if not _blocked(door) and not _in_water(door):
-				on_foot = true
-				walk_pos = door
-				walker.position = Vector3(door.x, 0.04, door.y)
-				walker.show()
-				break
-	car_speed = 0.0
-	route_target = ""
-	_dismiss_dialog()
-	street_last_pos = Vector2(INF, INF)
+	survival.toggle_vehicle()
 
 
 func _walk(delta: float) -> void:
@@ -1368,7 +1284,8 @@ func _walk(delta: float) -> void:
 	var right := cam.global_basis.x
 	var forward := cam.global_basis.z
 	var dir := Vector2(right.x, right.z) * screen.x + Vector2(forward.x, forward.z).normalized() * screen.y
-	var move := dir * delta * 5.2
+	survival.direction = screen
+	var move: Vector2 = dir * delta * survival.walking_speed()
 	for part in [Vector2(move.x, 0.0), Vector2(0.0, move.y)]:
 		var next: Vector2 = walk_pos + part
 		if not _blocked(next) and not _in_water(next):
@@ -1408,6 +1325,8 @@ func _drive(delta: float) -> void:
 		in_place = true
 		turn_k = 1.0 if absf(car_speed) > 2.0 else 0.8
 
+	if survival.fuel <= 0.0:
+		target = 0.0
 	var rate := ACCEL if absf(target) > absf(car_speed) and signf(target) == signf(car_speed) or car_speed == 0.0 else BRAKE
 	if target == 0.0:
 		rate = 10.0
@@ -1451,8 +1370,11 @@ func _drive(delta: float) -> void:
 
 
 func _car_blocked(p: Vector2) -> bool:
-	if _blocked(p) or _car_hits_pedestrian(p) or _car_hits_traffic(p):
+	if _blocked(p):
 		return true
+	for i in parked_vehicles.size():
+		if i != survival.active_vehicle and p.distance_squared_to(parked_vehicles[i]["pos"]) < 6.75:
+			return true
 	var fwd := Vector2(cos(car_heading), sin(car_heading))
 	var side := fwd.orthogonal() * 0.70
 	for sign_z in [-1.0, 1.0]:
@@ -2084,6 +2006,8 @@ func _build_touch_ui() -> void:
 	btn_car.custom_minimum_size = Vector2(120, 52)
 	btn_car.pressed.connect(_toggle_car)
 	layer.add_child(btn_car)
+	btn_attack = _icon_btn("attack", survival.attack)
+	layer.add_child(btn_attack)
 
 
 func _icon_btn(kind: String, cb: Callable) -> Button:
@@ -2107,7 +2031,11 @@ func _draw_icon(b: Button, kind: String) -> void:
 	var dark := Color(0.08, 0.07, 0.07)
 	b.draw_circle(c, r, Color(0.08, 0.07, 0.07, 0.8))
 	b.draw_arc(c, r - 1.5, 0.0, TAU, 40, gold, 3.0)
-	if kind == "home":
+	if kind == "attack":
+		b.draw_arc(c, 20.0 * k, 0.0, TAU, 24, cream, 3.0 * k)
+		b.draw_line(c - Vector2(25.0, 0.0) * k, c + Vector2(25.0, 0.0) * k, cream, 3.0 * k)
+		b.draw_line(c - Vector2(0.0, 25.0) * k, c + Vector2(0.0, 25.0) * k, cream, 3.0 * k)
+	elif kind == "home":
 		b.draw_colored_polygon(PackedVector2Array([c + Vector2(-26, -2) * k, c + Vector2(0, -28) * k, c + Vector2(26, -2) * k]), gold)
 		b.draw_rect(Rect2(c + Vector2(-18, -2) * k, Vector2(36, 28) * k), cream)
 		b.draw_rect(Rect2(c + Vector2(-5, 8) * k, Vector2(10, 18) * k), dark)
@@ -2157,16 +2085,16 @@ func _label_bg(l: Label, pad_x: float, pad_y: float) -> void:
 
 
 func _touch_vis() -> void:
-	if btn_talk == null:
-		return
-	home.btn_enter.visible = not in_home and not on_foot and not ui_panel.visible
-	btn_car.visible = not in_home and not menu_open and not ui_panel.visible and ((walk_pos.distance_to(car_pos) < 4.2) if on_foot else absf(car_speed) <= 2.0)
-	btn_car.text = ("Entrar" if on_foot else "Descer") + ("" if ph else " [F]")
-	btn_talk.visible = ph and not ui_panel.visible and (poi_index >= 0 or not _nearby_citizen().is_empty()) and not menu_open and not in_home
-	btn_book.visible = ph and not in_home and not ui_panel.visible and not menu_open and intro_state == 0
-	nav_arrow.visible = minimap.visible and nav_has
-	joy.visible = ph and intro_state != 1
-	case_label.visible = case_label.text != ""
+	btn_car.visible = not menu_open and survival.vehicle_available()
+	btn_car.text = survival.vehicle_caption() + ("" if ph else " [F]")
+	if not on_foot:
+		btn_car.text += " · %d%%" % roundi(survival.fuel)
+	btn_talk.visible = ph and not menu_open and survival.available()
+	btn_book.visible = not menu_open
+	btn_attack.visible = ph and not menu_open and on_foot
+	nav_arrow.visible = minimap.visible and nav_has and not menu_open
+	joy.visible = ph and not menu_open
+	case_label.visible = true
 
 
 func _layout_ui() -> void:
@@ -2193,15 +2121,18 @@ func _layout_ui() -> void:
 	money_label.position = Vector2(m, 12)
 	money_label.add_theme_font_size_override("font_size", 28 if ph else 24)
 	_label_bg(money_label, 10, 4)
+	money_label.hide()
+	clock_label.hide()
 	clock_label.position = Vector2(m + (132 if ph else 120), 12)
 	clock_label.add_theme_font_size_override("font_size", 24 if ph else 20)
 	_label_bg(clock_label, 10, 6)
 	var cw := minf(580.0, vs.x - msz - m * 3.0)
-	street_label.position = Vector2(m, 65 if ph else 54)
+	survival.layout(cw)
+	street_label.position = Vector2(m, 92 if ph else 77)
 	street_label.size.x = cw
 	street_label.add_theme_font_size_override("font_size", 21 if ph else 17)
 	_label_bg(street_label, 10, 5)
-	case_label.position = Vector2(m, 106 if ph else 87)
+	case_label.position = Vector2(m, 133 if ph else 111)
 	case_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	case_label.custom_minimum_size = Vector2(cw, 0)
 	case_label.size = Vector2(cw, 0)
@@ -2219,7 +2150,8 @@ func _layout_ui() -> void:
 	joy.position = Vector2((vs.x - jsz) * 0.5, vs.y - jsz - 36.0)
 	joy.size = Vector2(jsz, jsz)
 	btn_book.position = Vector2(vs.x - 88.0 - 16.0, vs.y - 88.0 - 40.0)
-	btn_car.position = Vector2(14.0, vs.y - 206.0 if ph else vs.y - 62.0)
+	btn_car.position = Vector2(14.0, vs.y - 125.0 if ph else vs.y - 62.0)
+	btn_attack.position = Vector2(14.0, vs.y - 230.0)
 	btn_talk.position = Vector2(vs.x - 88.0 - 16.0, vs.y - 88.0 * 2.0 - 56.0)
 	if ph:
 		ui_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -2301,23 +2233,12 @@ func _on_joy_input(ev: InputEvent) -> void:
 
 
 func _on_touch_interact() -> void:
-	if in_home or menu_open:
-		return
-	if poi_index >= 0:
-		_interact()
-		return
-	var citizen := _nearby_citizen()
-	if citizen.is_empty():
-		return
-	ui_panel.show()
-	ui_portrait.texture = _portrait_tex(str(citizen["name"]))
-	ui_name.text = "%s · %s" % [citizen["name"], citizen["job"]]
-	_say("%s\n\n%s · %s" % [citizen["story"], citizen["street"], str(citizen["phase"]).capitalize()])
+	if not menu_open:
+		survival.interact()
 
 
 func _on_touch_notebook() -> void:
-	if not menu_open:
-		_show_notebook()
+	survival.inventory()
 
 
 func _close_menu() -> void:
@@ -2381,7 +2302,7 @@ func _register_sign(text: String, anchor: Vector3) -> void:
 
 func _update_signs() -> void:
 	var view := get_viewport().get_visible_rect().size
-	sign_layer.visible = not ui_panel.visible
+	sign_layer.visible = not menu_open
 	if not sign_layer.visible:
 		return
 	var available := Rect2(Vector2(12, case_label.position.y + case_label.size.y + 42), Vector2(view.x - 24, view.y))
@@ -2570,7 +2491,13 @@ func _fill_lots() -> void:
 						if row == 0 and added % 13 == 0:
 							var models := ["casa_terracota", "casa_azulada", "comercio_toldo"]
 							var model: String = models[int(float(added) / 13.0) % models.size()]
-							_place_city_model(CITY_MODELS + model + ".glb", center, facing, Vector3(w, h, depth))
+							var model_path := CITY_MODELS + model + ".glb"
+							if added % 130 == 0:
+								var voxel := "voxel_casa" if model != "comercio_toldo" else "voxel_comercio"
+								var variant := "res://assets/survival_local/" + voxel + ".glb"
+								if ResourceLoader.exists(variant):
+									model_path = variant
+							_place_city_model(model_path, center, facing, Vector3(w, h, depth))
 						else:
 							_city_building(st, pts, h, added + city["buildings"].size())
 						added += 1
@@ -2984,7 +2911,52 @@ func _place_street_object(path: String, q: Vector2, dir: Vector2, scale_factor: 
 	inst.transform = Transform3D(bas, Vector3(q.x, 0.0, q.y) - bas * Vector3(ctr.x, ab.position.y, ctr.z))
 	add_child(inst)
 	placed_street_objects.append(shape)
+	if align_long_axis:
+		var facing := atan2(heading.y, heading.x)
+		parked_vehicles.append({"node":inst,"pos":q,"path":path,"basis":bas,"offset":Vector3(ctr.x,ab.position.y,ctr.z),
+			"heading":facing,"original_heading":facing,"index":parked_vehicles.size()})
 	return true
+
+
+func _fill_abandoned_car_gaps() -> void:
+	var car_pool := [PLAYER_CAR, VEHICLE_DIR + "/Car_Blue.glb"]
+	for i in pois.size():
+		var p: Dictionary = pois[i]
+		if not p.has("access_x") or (str(p["id"]) != "central" and not p.get("real_place", false)):
+			continue
+		var center := Vector2(p["access_x"], p["access_y"])
+		if parked_vehicles.any(func(v): return center.distance_squared_to(v["pos"]) < 47.0 * 47.0):
+			continue
+		var path: String = car_pool[i % car_pool.size()]
+		if not ResourceLoader.exists(path):
+			continue
+		var model := _proto_aabb(path)
+		var length := maxf(model.size.x, model.size.z)
+		if length <= 0.01:
+			continue
+		var cell := Vector2i(floori(center.x / 50.0), floori(center.y / 50.0))
+		var placed := false
+		for dx in range(-1, 2):
+			for dy in range(-1, 2):
+				for lane in rd_bk.get(cell + Vector2i(dx, dy), []):
+					var point: Vector2 = lane[0]
+					var distance := center.distance_to(point)
+					if distance < 9.0 or distance > 27.0 or str(lane[3]) in ["footway", "trunk", "motorway"]:
+						continue
+					var facing: Vector2 = lane[1]
+					for side in [-1.0, 1.0]:
+						var q := point + facing.orthogonal() * (float(lane[2]) + 2.1) * float(side)
+						if _blocked(q) or parked_vehicles.any(func(v): return q.distance_squared_to(v["pos"]) < 6.0 * 6.0):
+							continue
+						if _place_street_object(path, q, facing, CAR_LENGTH / length, true):
+							placed = true
+							break
+					if placed:
+						break
+				if placed:
+					break
+			if placed:
+				break
 
 
 func _scatter_props() -> void:
@@ -3081,66 +3053,22 @@ func _car_hits_traffic(p: Vector2) -> bool:
 
 # ---------- caso 1: sistema de quest (individual, com pistas e acusação) ----------
 
-func _setup_case() -> void:
-	var w: Dictionary = city["window"]
-	var has_central := false
-	for p in pois:
-		if str(p["id"]) == "central":
-			has_central = true
-	if not has_central:
-		var hq := Vector2(float(w["cx"]), float(w["cy"]))
-		var bh := 1e9
-		var hc := hq
-		for b in building_polys:
-			var cc: Vector2 = b["bb"].get_center()
-			if cc.distance_to(hq) < bh:
-				bh = cc.distance_to(hq)
-				hc = cc
-		pois.append({"id": "central", "name": "Central de Investigação", "npc": "Sargento Lima", "role": "sargento", "greeting": "", "story": "", "line": "", "look": 0, "tint": Color(0.7, 0.7, 0.85), "x": hc.x, "y": hc.y, "snapDist": 60.0})
-	case_pois = {}
-	for p in pois:
-		var pos := Vector2(float(p["x"]), float(p["y"]))
-		if p.has("access_x"):
+func _setup_survival_places() -> void:
+	for point in pois:
+		if point.has("access_x"):
 			continue
-		var road := _access_near(pos, str(p["address"])) if p.get("real_place", false) else _road_near(pos, true)
+		var pos := Vector2(float(point["x"]), float(point["y"]))
+		var road := _access_near(pos, str(point.get("address", ""))) if point.get("real_place", false) else _road_near(pos, true)
 		if not road.is_empty():
 			var access: Vector2 = road[0]
-			p["access_x"] = access.x
-			p["access_y"] = access.y
-			p["access_radius"] = 17.0
-	for c in CASES:
-		for st in c["steps"]:
-			var pn := str(st["poi"])
-			if case_pois.has(pn):
-				continue
-			for p in pois:
-				if str(p["name"]) == pn:
-					case_pois[pn] = str(p["id"])
-					case_locations[str(p["id"])] = p
-					if str(st["kind"]) == "talk":
-						p["npc"] = str(st["npc"])
-						p["role"] = str(st["role"])
-						p["greeting"] = str(st["greeting"])
-						p["story"] = str(st["story"])
-						p["line"] = str(st["greeting"])
-					break
-	pad_id = str(case_pois.get("Padaria do Zé", ""))
-	farm_id = str(case_pois.get("Farmácia Santa Clara", ""))
-	for loc in case_locations.values():
-		var pos := Vector2(float(loc.get("access_x", loc["x"])), float(loc.get("access_y", loc["y"])))
-		street_names[loc["id"]] = str(loc.get("address", _street_at(pos)))
-	_load_case()
-
+			point["access_x"] = access.x
+			point["access_y"] = access.y
 	case_label = Label.new()
-	case_label.position = Vector2(20, 88)
-	case_label.add_theme_font_size_override("font_size", 18)
-	case_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.8))
+	case_label.add_theme_color_override("font_color", Color("#eee0bc"))
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	layer.add_child(case_label)
-
 	minimap = Control.new()
-	minimap.position = Vector2(1280 - 250, 20)
 	minimap.custom_minimum_size = Vector2(230, 230)
 	minimap.size = Vector2(230, 230)
 	minimap.draw.connect(_draw_minimap)
@@ -3173,9 +3101,10 @@ func _build_fixed_people() -> void:
 		if p.get("real_place", false):
 			perch = _site_entrance(p, access, perch)
 		p["npc_pos"] = perch
-		var npc := _person_sprite(i % 6)
-		npc.position = Vector3(perch.x, 0.04, perch.y)
-		static_people.append(npc)
+		if str(p["id"]) == "central":
+			var npc := _person_sprite(2)
+			npc.position = Vector3(perch.x, 0.04, perch.y)
+			static_people.append(npc)
 		_register_sign(str(p["name"]), Vector3(perch.x, 3.1, perch.y))
 
 
@@ -3241,30 +3170,7 @@ func _case_text() -> String:
 
 
 func _target_id() -> String:
-	var frame := Engine.get_process_frames()
-	if cached_target_frame != frame:
-		cached_target_frame = frame
-		cached_target = _resolve_target()
-	return cached_target
-
-
-func _resolve_target() -> String:
-	if case_done or case_step >= _cur_steps().size():
-		return ""
-	if _first_case_leads_active():
-		var closest := ""
-		var best := INF
-		for lead in _cur_steps().slice(1, 4):
-			var id := str(case_pois.get(lead["poi"], ""))
-			if id.is_empty() or id in lead_ids:
-				continue
-			var p: Dictionary = case_locations[id]
-			var d := car_pos.distance_squared_to(Vector2(float(p.get("access_x", p["x"])), float(p.get("access_y", p["y"]))))
-			if d < best:
-				best = d
-				closest = id
-		return closest
-	return str(case_pois.get(str(_cur_steps()[case_step]["poi"]), ""))
+	return survival.objective_id()
 
 
 func _interact() -> void:
@@ -4361,7 +4267,7 @@ func _update_goal_arrow() -> void:
 	var tid := _target_id()
 	var found := false
 	var tp := Vector2.ZERO
-	if tid != "" and not case_done:
+	if tid != "":
 		for p in pois:
 			if str(p["id"]) == tid:
 				tp = Vector2(float(p.get("access_x", p["x"])), float(p.get("access_y", p["y"])))

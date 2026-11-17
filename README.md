@@ -1,25 +1,29 @@
-# Caso Aberto · Campo Grande
+# Campo Grande · Zona de Quarentena
 
-Jogo de investigação em Campo Grande (MS), com cidade isométrica, renderização pixelada e casos ficcionais.
+Sobrevivência isométrica nas ruas de Campo Grande, Mato Grosso do Sul.
 
-![Chegada à Central de Investigação](captura.png)
+[**Jogar no navegador ou no celular**](https://contato673.github.io/CASO-ABERTO-GPT/) · [Versão Windows](versoes/Caso-Aberto-Windows.zip) · [Capturas de teste](testes-visuais/sobrevivencia/)
 
-## Jogar
+Você começa a pé no abrigo da Rua Barão do Rio Branco. A primeira missão pede um kit de primeiros socorros na Pague Menos da Rua 13 de Maio. O minimapa marca o destino. Em locais trancados, quebrar um vidro libera a busca e alerta infectados próximos.
 
-[**Jogar no navegador ou no celular**](https://contato673.github.io/CASO-ABERTO-GPT/)
+| Controle | Ação |
+| --- | --- |
+| WASD, setas ou joystick | Caminhar ou dirigir |
+| E, tocar na construção próxima ou botão de interação | Ver o estoque externo ou falar no abrigo |
+| F ou Roubar / Entrar / Descer | Assumir um carro próximo ou sair dele com o veículo parado |
+| Espaço ou mira na tela | Atacar com o equipamento disponível |
+| I ou ícone da mochila | Ver suprimentos e usar itens |
+| Esc ou Fechar | Fechar a janela |
 
-- [Windows](versoes/Caso-Aberto-Windows.zip) — extraia e execute **Caso Aberto - Campo Grande.exe**.
-- [Navegador](versoes/Caso-Aberto-Web.zip) — extraia e sirva a pasta por HTTP em localhost ou HTTPS na hospedagem.
-- [Revisão técnica e controles](REVISAO.md).
-- [Capturas de teste](testes-visuais/).
+Saúde, fome, sede e energia afetam recuperação e movimento. A mochila tem 18 espaços. O saque varia por categoria de construção e leva aproximadamente 7 a 20 minutos para voltar depois de esvaziado. Os carros consomem combustível. Estacione e chegue perto do carro em uso para abastecer. O motor e a quebra de vidro podem chamar infectados.
 
-Use **W/A/S/D** ou as setas para dirigir, **F** para sair do carro ou entrar nele, **E** para interagir e **C** para abrir o caderno. O primeiro caso envolve o Museu dos Trabalhadores Ferroviários, a Feira Central e o Relógio da 14 de Julho. No celular, use o botão **Descer** com o veículo parado.
+Há três entregas para o abrigo. Depois da sequência, novos contratos ficam disponíveis após 20 minutos. Mochila, necessidades, estoque, carros e reputação são salvos no dispositivo. A rede do abrigo é uma progressão local para um jogador.
 
-## Editar no Godot
+## Editar
 
-1. Com o projeto original em mãos, copie a pasta **assets/pack/** para os mesmos caminhos neste projeto. Os modelos de terceiros devem ser obtidos da sua cópia original. As licenças do projeto ficam em **assets/LICENSES/**.
-2. Importe **project.godot** no Godot 4.7.2. Pressione **F5** para testar.
-3. Os modelos autorais estão em **assets/cidade/**. O gerador em **scripts/blender/cidade_cg.py** pode regenerá-los com Blender 5.2 e Python.
-4. Para atualizar as versões jogáveis, use os presets **Windows** e **Web** do Godot e substitua os ZIPs correspondentes em **versoes/**.
+1. Com a cópia original em mãos, copie **assets/pack/** para o mesmo caminho deste projeto.
+2. Importe **project.godot** no Godot 4.7.2.
+3. Os recursos opcionais de sobrevivência ficam em **assets/survival_local/**, ignorados pelo Git. Os créditos e a origem de cada pack estão na [revisão](REVISAO.md).
+4. Use os presets **Windows** e **Web** nos templates da mesma versão. Para publicar o Web, atualize os arquivos da pasta **docs/** e o ZIP em **versoes/**.
 
 Dados cartográficos © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), sob ODbL.
