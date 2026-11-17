@@ -12,10 +12,12 @@ Você começa a pé no abrigo da Rua Barão do Rio Branco. A primeira missão pe
 | E, tocar na construção próxima ou botão de interação | Ver o estoque externo ou falar no abrigo |
 | F ou Roubar / Entrar / Descer | Assumir um carro próximo ou sair dele com o veículo parado |
 | Espaço ou mira na tela | Atacar com o equipamento disponível |
-| I ou ícone da mochila | Ver suprimentos e usar itens |
+| I ou ícone da mochila | Ver suprimentos, usar itens e trocar a arma na mão |
 | Esc ou Fechar | Fechar a janela |
 
 Saúde, fome, sede e energia afetam recuperação e movimento. A mochila tem 18 espaços. O saque varia por categoria de construção e volta entre 2 e 6 horas reais depois que o estoque é esvaziado. A contagem continua com o jogo fechado. Os carros consomem combustível. Estacione e chegue perto do carro em uso para abastecer. O motor e a quebra de vidro podem chamar infectados.
+
+Na mochila, escolha **Equipar** ou **Guardar arma · Usar punhos**. A faca aparece no Mercadão, e a pistola e a munição podem ser encontradas no Pátio Central Shopping. Cada disparo gasta uma munição e pode atrair infectados de longe.
 
 No Posto Barão, abra **Baú pessoal** a pé para guardar ou retirar até 60 itens. O conteúdo do baú é salvo no dispositivo e permanece após a derrota do personagem.
 

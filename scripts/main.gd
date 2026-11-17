@@ -1280,7 +1280,7 @@ func _walk(delta: float) -> void:
 		float(Input.is_physical_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT)),
 		float(Input.is_physical_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP))
 	)
-	var screen := (keyboard + joy_vec).limit_length()
+	var screen := (keyboard + joy_vec).limit_length() if survival.action_time <= 0.0 else Vector2.ZERO
 	var right := cam.global_basis.x
 	var forward := cam.global_basis.z
 	var dir := Vector2(right.x, right.z) * screen.x + Vector2(forward.x, forward.z).normalized() * screen.y

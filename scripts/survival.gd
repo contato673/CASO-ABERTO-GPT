@@ -8,8 +8,25 @@ const LOOT_MIN_SECONDS := 2 * 3600
 const LOOT_MAX_SECONDS := 6 * 3600
 const ITEM_NAMES := {
 	"water": "Água", "food": "Conserva", "med": "Primeiros socorros",
-	"fuel": "Galão de combustível", "parts": "Peças", "bat": "Taco", "crowbar": "Pé de cabra"
+	"fuel": "Galão de combustível", "parts": "Peças", "bat": "Taco", "crowbar": "Pé de cabra",
+	"knife": "Faca", "pistol": "Pistola", "ammo": "Munição"
 }
+const WEAPONS := {
+	"fist": {"reach": 1.8, "damage": 14.0, "duration": 0.45, "impact": 0.14, "noise": 10.0},
+	"knife": {"reach": 2.25, "damage": 24.0, "duration": 0.43, "impact": 0.15, "noise": 9.0},
+	"bat": {"reach": 3.05, "damage": 30.0, "duration": 0.64, "impact": 0.25, "noise": 13.0},
+	"crowbar": {"reach": 3.05, "damage": 38.0, "duration": 0.7, "impact": 0.27, "noise": 17.0},
+	"pistol": {"reach": 18.0, "damage": 55.0, "duration": 0.55, "impact": 0.18, "noise": 105.0},
+}
+const EQUIPMENT_ART := {
+	"fist": preload("res://assets/equipamento/fist.png"),
+	"knife": preload("res://assets/equipamento/knife.png"),
+	"bat": preload("res://assets/equipamento/bat.png"),
+	"crowbar": preload("res://assets/equipamento/crowbar.png"),
+	"pistol": preload("res://assets/equipamento/pistol.png"),
+	"ammo": preload("res://assets/equipamento/ammo.png"),
+}
+const CONSUMABLES := {"food": "fome", "water": "sede", "med": "saude"}
 const QUESTS := [
 	{"place": "pague_menos_13", "item": "med", "title": "Primeiros socorros", "request": "Busque um kit na Pague Menos da Rua 13 de Maio.", "reward": "water"},
 	{"place": "mercado", "item": "food", "title": "Rações para o abrigo", "request": "Busque uma conserva no Mercadão, Rua 7 de Setembro.", "reward": "med"},
@@ -54,7 +71,15 @@ var pulse := 0.0
 var restock_label: Label
 var save_timer := 0.0
 var population_timer := 0.0
-var swing := 0.0
+var equipped := "bat"
+var hand: Sprite3D
+var sleeve: Sprite3D
+var muzzle_flash: Sprite3D
+var action_item := ""
+var action_time := 0.0
+var action_duration := 0.0
+var action_face := 1.0
+var pending_hit := false
 var noise_timer := 0.0
 var menu_kind := ""
 var opened: Dictionary = {}
@@ -72,13 +97,35 @@ func setup(city_game: Node) -> void:
 	for i in 8:
 		icons["zombie_%d" % i] = _texture("zombie_%d" % i)
 	for item in ITEM_NAMES:
-		icons[item] = _texture(item)
+		icons[item] = EQUIPMENT_ART[item] if EQUIPMENT_ART.has(item) else _texture(item)
 	if active_vehicle < 0:
 		game.on_foot = true
 	game.walker.visible = game.on_foot
 	if not _valid_position(game.walk_pos) or not is_finite(game.walk_pos.x):
 		game.walk_pos = safe
 	game.walker.position = Vector3(game.walk_pos.x, 0.04, game.walk_pos.y)
+	hand = Sprite3D.new()
+	hand.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	hand.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	hand.shaded = false
+	game.walker.add_child(hand)
+	sleeve = Sprite3D.new()
+	sleeve.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	sleeve.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	var pixels := Image.create_empty(4, 3, false, Image.FORMAT_RGBA8)
+	pixels.fill(Color("#272432"))
+	pixels.fill_rect(Rect2i(0, 1, 3, 1), Color("#777c6c"))
+	pixels.set_pixel(3, 1, Color("#e6a47c"))
+	sleeve.texture = ImageTexture.create_from_image(pixels)
+	game.walker.add_child(sleeve)
+	muzzle_flash = Sprite3D.new()
+	muzzle_flash.texture = preload("res://assets/equipamento/disparo.png")
+	muzzle_flash.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	muzzle_flash.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	muzzle_flash.pixel_size = 0.11
+	muzzle_flash.shaded = false
+	game.walker.add_child(muzzle_flash)
+	_update_hand(0.0)
 	_refresh_vehicle()
 	_update_near()
 
@@ -89,7 +136,7 @@ func tick(delta: float) -> void:
 	var where: Vector2 = game._actor_pos()
 	var in_shelter := where.distance_to(safe) < 8.0
 	var moving: bool = game.on_foot and direction.length_squared() > 0.02
-	swing = maxf(0, swing - delta)
+	_update_hand(delta)
 	noise_timer = maxf(0, noise_timer - delta)
 	needs["fome"] = maxf(0.0, float(needs["fome"]) - delta * (0.052 if moving else 0.034))
 	needs["sede"] = maxf(0.0, float(needs["sede"]) - delta * (0.079 if moving else 0.052))
@@ -128,6 +175,10 @@ func tick(delta: float) -> void:
 		save()
 	if needs["saude"] <= 0.0:
 		down = true
+		_reset_action()
+		hand.hide()
+		sleeve.hide()
+		muzzle_flash.hide()
 		game.menu_open = true
 		_open_panel("queda", "Você caiu")
 		_line("Volte ao abrigo. O equipamento que carregava ficou para trás.")
@@ -187,7 +238,7 @@ func walk_location_click(screen: Vector2) -> bool:
 
 
 func interact() -> void:
-	if not game.on_foot or closest_site.is_empty() or down:
+	if not game.on_foot or closest_site.is_empty() or down or action_time > 0.0:
 		return
 	opened = closest_site
 	if str(opened["id"]) == "central":
@@ -197,23 +248,50 @@ func interact() -> void:
 
 
 func inventory() -> void:
-	if down:
+	if down or action_time > 0.0:
 		return
 	if menu_kind == "inventory":
 		close()
 		return
+	_inventory_menu()
+
+
+func _inventory_menu() -> void:
 	_open_panel("inventory", "Mochila · %d/%d" % [_bag_count(), CAPACITY])
+	var equipped_name := "Punhos" if equipped == "fist" else str(ITEM_NAMES[equipped])
+	if equipped == "pistol":
+		equipped_name += " · Munição ×%d" % int(bag.get("ammo", 0))
+	_line("Na mão: " + equipped_name)
+	if equipped != "fist":
+		_button("Guardar arma · Usar punhos", _equip.bind("fist"), "fist")
+	for item in WEAPONS:
+		if item == equipped or not bag.has(item):
+			continue
+		var caption := "Equipar %s" % ITEM_NAMES[item]
+		if item == "pistol":
+			caption += " · Munição ×%d" % int(bag.get("ammo", 0))
+		_button(caption, _equip.bind(item), item)
 	for item in ITEM_NAMES:
 		var count := int(bag.get(item, 0))
-		if count == 0:
+		if count == 0 or WEAPONS.has(item):
 			continue
 		var caption := "%s ×%d" % [ITEM_NAMES[item], count]
-		if item in ["food", "water", "med", "fuel"]:
-			_button(caption + "   Usar", _use.bind(item), item)
+		if CONSUMABLES.has(item) or item == "fuel":
+			_button("Usar " + caption, _use.bind(item), item)
 		else:
 			_line(caption)
 	if _bag_count() == 0:
 		_line("Mochila vazia.")
+
+
+func _equip(item: String) -> void:
+	if menu_kind != "inventory" or not WEAPONS.has(item):
+		return
+	if item != "fist" and int(bag.get(item, 0)) <= 0:
+		return
+	equipped = item
+	save()
+	_inventory_menu()
 
 
 func close() -> void:
@@ -240,7 +318,7 @@ func vehicle_caption() -> String:
 
 
 func toggle_vehicle() -> void:
-	if game.menu_open or down:
+	if game.menu_open or down or action_time > 0.0:
 		return
 	if not game.on_foot:
 		if absf(game.car_speed) > 2.0:
@@ -291,29 +369,141 @@ func toggle_vehicle() -> void:
 
 
 func attack() -> void:
-	if down or game.menu_open or not game.on_foot or swing > 0.0:
+	if down or game.menu_open or not game.on_foot or action_time > 0.0:
 		return
 	if needs["energia"] < 6.0:
 		_notify("Sem energia para atacar.")
 		return
-	var reach := 3.05 if bag.has("crowbar") or bag.has("bat") else 1.8
-	var damage := 38.0 if bag.has("crowbar") else (30.0 if bag.has("bat") else 14.0)
-	swing = 0.64
-	needs["energia"] = maxf(0.0, float(needs["energia"]) - 5.0)
+	var stats: Dictionary = WEAPONS[equipped]
+	if equipped == "pistol" and not bag.has("ammo"):
+		_notify("Pistola sem munição.")
+		return
+	_start_action(equipped, stats["duration"])
+	pending_hit = true
+	needs["energia"] = maxf(0.0, float(needs["energia"]) - (2.0 if equipped == "pistol" else 5.0))
+	var nearest := _attack_target(stats["reach"])
+	if not nearest.is_empty():
+		var offset: Vector2 = nearest["pos"] - game.walk_pos
+		var right: Vector3 = game.cam.global_basis.x
+		if absf(offset.dot(Vector2(right.x, right.z))) > 0.1:
+			action_face = signf(offset.dot(Vector2(right.x, right.z)))
+			game.walk_face = 0 if action_face < 0.0 else 1
+
+
+func _attack_target(reach: float) -> Dictionary:
 	var nearest: Dictionary = {}
-	var best := reach
 	for zombie in infected:
 		if zombie["state"] == "dead":
 			continue
-		var d: float = game.walk_pos.distance_to(zombie["pos"])
-		if d < best and _clear_line(game.walk_pos, zombie["pos"]):
+		var dist: float = game.walk_pos.distance_to(zombie["pos"])
+		if dist <= reach and _clear_line(game.walk_pos, zombie["pos"]):
 			nearest = zombie
-			best = d
-	make_noise(game.walk_pos, 13.0)
+			reach = dist
+	return nearest
+
+
+func _strike(item: String, stats: Dictionary) -> void:
+	var firearm := item == "pistol"
+	if firearm:
+		if int(bag.get("ammo", 0)) <= 0:
+			return
+		_remove_item("ammo")
+	make_noise(game.walk_pos, stats["noise"])
+	var nearest := _attack_target(stats["reach"])
 	if nearest.is_empty():
-		_notify("Golpe no ar.")
+		_notify("Disparo sem acerto." if firearm else "Golpe no ar.")
+	else:
+		_damage_zombie(nearest, stats["damage"])
+	if firearm:
+		save()
+
+
+func _start_action(item: String, duration: float) -> void:
+	action_item = item
+	action_duration = duration
+	action_time = duration
+	action_face = -1.0 if game.walk_face == 0 else 1.0
+
+
+func _reset_action() -> void:
+	action_time = 0.0
+	action_item = ""
+	pending_hit = false
+	game.walker.offset = Vector2(0, 19)
+
+
+func _update_hand(delta: float) -> void:
+	var elapsed := 0.0
+	if action_time > 0.0:
+		action_time = maxf(0.0, action_time - delta)
+		elapsed = action_duration - action_time
+		if pending_hit:
+			var stats: Dictionary = WEAPONS[action_item]
+			if elapsed >= float(stats["impact"]):
+				pending_hit = false
+				_strike(action_item, stats)
+		if action_time <= 0.0:
+			_reset_action()
+
+	var acting := not action_item.is_empty()
+	var item := action_item if acting else equipped
+	hand.visible = game.on_foot and not down and (acting or item != "fist")
+	muzzle_flash.hide()
+	sleeve.visible = hand.visible
+	if not hand.visible:
 		return
-	_damage_zombie(nearest, damage)
+	var texture: Texture2D = EQUIPMENT_ART.get(item, icons.get(item))
+	hand.texture = texture
+	var face := action_face if acting else (-1.0 if game.walk_face == 0 else 1.0)
+	var pose := Vector2(9, 15)
+	var tilt := -0.45
+	var body_shift := Vector2.ZERO
+	var scale_px := 0.078
+	var shot_flash := false
+	if CONSUMABLES.has(item) or item == "fuel":
+		var lift := sin(PI * clampf(elapsed / action_duration, 0.0, 1.0))
+		var use_at: Vector2 = {"water": Vector2(4, 28), "food": Vector2(5, 26),
+			"med": Vector2(2, 13), "fuel": Vector2(14, 8)}[item]
+		pose = pose.lerp(use_at, lift)
+		tilt = lift * (0.8 if item == "water" else -0.3)
+		body_shift.y = -lift * (2.0 if item == "med" else 1.0)
+		if texture != null:
+			scale_px = 0.68 / maxf(texture.get_width(), texture.get_height())
+	elif acting:
+		var impact: float = WEAPONS[item]["impact"]
+		if item == "pistol":
+			shot_flash = elapsed >= impact and elapsed - impact < 0.085
+			var recoil := exp(-maxf(0.0, elapsed - impact) * 22.0) if elapsed >= impact else 0.0
+			pose = Vector2(16 - recoil * 5, 20 + recoil * 3)
+			tilt = recoil * 0.5
+			body_shift.x = -recoil * 2.0
+		else:
+			var progress := elapsed / impact if elapsed < impact else (action_duration - elapsed) / (action_duration - impact)
+			if item == "knife" or item == "fist":
+				pose = Vector2(8 + 16 * progress, 15 + 3 * progress)
+				tilt = -0.12
+			else:
+				var arc := lerpf(1.6, -0.65, elapsed / action_duration)
+				pose = Vector2(8 + 15 * progress, 15 + 10 * sin(arc))
+				tilt = arc
+			body_shift = Vector2(4 * progress, -progress)
+	hand.flip_h = face < 0.0
+	hand.pixel_size = scale_px
+	var camera: Basis = game.cam.global_basis
+	var origin: Vector3 = game.walker.global_position
+	var held := Vector2(pose.x * face, pose.y) * 0.072
+	hand.global_transform = Transform3D(camera * Basis(Vector3.BACK, tilt * face),
+		origin + camera * Vector3(held.x, held.y, 0.14))
+	if shot_flash:
+		muzzle_flash.global_transform = hand.global_transform * Transform3D(Basis.IDENTITY, Vector3(0.94 * face, 0.18, 0.03))
+		muzzle_flash.show()
+	var shoulder := Vector2((5 + body_shift.x) * face, 19 + body_shift.y) * 0.072
+	var grip := held - Vector2(0.16 * face, 0)
+	var arm := grip - shoulder
+	var center := (shoulder + grip) * 0.5
+	var arm_basis := Basis(Vector3.BACK, arm.angle()) * Basis.from_scale(Vector3(maxf(0.15, arm.length()) / 0.04, 6, 1))
+	sleeve.global_transform = Transform3D(camera * arm_basis, origin + camera * Vector3(center.x, center.y, 0.07))
+	game.walker.offset = Vector2(body_shift.x * face, 19 + body_shift.y)
 
 
 func make_noise(at: Vector2, radius: float) -> void:
@@ -594,9 +784,22 @@ func _stash(p: Dictionary) -> Dictionary:
 			stock[task["item"]] = maxi(1, int(stock.get(task["item"], 0)))
 	var delay := random.randi_range(LOOT_MIN_SECONDS, LOOT_MAX_SECONDS)
 	var lock := id == "pague_menos_13" or id == "patio_central" or random.randf() < (0.55 if type != "other" else 0.36)
+	var first_equipment := cycle == 1 or bool(containers.get(id, {}).get("arms_pending", false))
+	if first_equipment or (id == "mercado" and random.randf() < 0.30) or (id == "patio_central" and random.randf() < 0.16):
+		_stock_new_equipment(id, stock)
+	if not stock.has("ammo") and type == "mall" and random.randf() < 0.18:
+		stock["ammo"] = 2
 	var entry := {"items":stock, "unlocked":not lock, "delay":delay, "cycle":cycle, "ready_at":(_now() + delay if stock.is_empty() else 0.0)}
 	containers[id] = entry
 	return entry
+
+
+func _stock_new_equipment(id: String, stock: Dictionary) -> void:
+	if id == "mercado":
+		stock["knife"] = 1
+	elif id == "patio_central":
+		stock["pistol"] = 1
+		stock["ammo"] = 3
 
 
 func _kind(p: Dictionary) -> String:
@@ -674,6 +877,8 @@ func _transfer_item(item: String, deposit: bool, requested: int) -> void:
 		return
 	if count == moved:
 		source.erase(item)
+		if deposit and equipped == item:
+			equipped = "fist"
 	else:
 		source[item] = count - moved
 	target[item] = int(target.get(item, 0)) + moved
@@ -713,22 +918,28 @@ func _rest() -> void:
 
 
 func _use(item: String) -> void:
-	if int(bag.get(item,0)) <= 0:
+	if not game.on_foot:
+		_notify("Desça do carro para usar este item.")
+		return
+	if down or action_time > 0.0 or int(bag.get(item, 0)) <= 0:
 		return
 	if item == "fuel":
 		if _nearest_vehicle() != active_vehicle or active_vehicle < 0:
 			_notify("Chegue perto do carro em uso para abastecer.")
 			return
 		fuel = minf(100, fuel + 35.0)
-	else:
-		var meter: String = {"food":"fome", "water":"sede", "med":"saude"}[item]
+	elif CONSUMABLES.has(item):
+		var meter: String = CONSUMABLES[item]
 		needs[meter] = minf(100, float(needs[meter]) + (35.0 if item == "med" else 42.0))
+	else:
+		return
 	_remove_item(item)
 	if quest < QUESTS.size() and item == QUESTS[quest]["item"] and not bag.has(item) and not chest.has(item):
 		supply_found = false
+	close()
+	_start_action(item, 0.85)
+	_update_hud()
 	save()
-	menu_kind = ""
-	inventory()
 
 
 func _remove_item(item: String) -> void:
@@ -960,6 +1171,8 @@ func _valid_position(at: Vector2) -> bool:
 
 
 func _revive() -> void:
+	_reset_action()
+	equipped = "bat"
 	bag = {"food":1,"water":1,"bat":1}
 	needs = {"saude":100.0,"fome":68.0,"sede":68.0,"energia":72.0}
 	for z in infected:
@@ -1002,7 +1215,7 @@ func save() -> void:
 	var player: Vector2 = game._actor_pos()
 	var f := FileAccess.open(SAVE, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"on_foot":game.on_foot,"areas":containers,"bag":bag,"chest":chest,"needs":needs,"taken":taken,"vehicle":active_vehicle,
+		f.store_string(JSON.stringify({"on_foot":game.on_foot,"areas":containers,"bag":bag,"equipped":equipped,"chest":chest,"needs":needs,"taken":taken,"vehicle":active_vehicle,
 			"fuel":fuel,"quest":quest,"found":supply_found,"reputation":reputation,"next":next_contract,"x":player.x,"y":player.y,
 			"cx":game.car_pos.x,"cy":game.car_pos.y,"heading":game.car_heading}))
 
@@ -1015,8 +1228,20 @@ func _load_progress() -> void:
 	if not data is Dictionary:
 		return
 	containers = data.get("areas", {})
+	if not data.has("equipped"):
+		for id in ["mercado", "patio_central"]:
+			if containers.has(id):
+				var entry: Dictionary = containers[id]
+				if entry["items"].is_empty():
+					entry["arms_pending"] = true
+				else:
+					_stock_new_equipment(id, entry["items"])
 	_upgrade_loot_delays()
 	bag = data.get("bag", bag)
+	var previous := "crowbar" if bag.has("crowbar") else ("bat" if bag.has("bat") else "fist")
+	equipped = str(data.get("equipped", previous))
+	if not WEAPONS.has(equipped) or (equipped != "fist" and not bag.has(equipped)):
+		equipped = "fist"
 	chest = data.get("chest", {})
 	needs.merge(data.get("needs", {}), true)
 	taken = data.get("taken", {})
