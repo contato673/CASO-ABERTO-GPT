@@ -16,7 +16,14 @@ const QUESTS := [
 	{"place": "patio_central", "item": "parts", "title": "O rádio do abrigo", "request": "Recolha peças no Pátio Central Shopping, Rua Marechal Rondon.", "reward": "fuel"}
 ]
 const NEEDS := ["saude", "fome", "sede", "energia"]
-const COLORS := [Color("#be665e"), Color("#c49d56"), Color("#69a3b2"), Color("#a6ad70")]
+const COLORS := [Color("#f47e80"), Color("#f4bc70"), Color("#73cde7"), Color("#d0dc80")]
+# Heart, bread, drop and bolt. A plus marks the highlight pixels.
+const METER_PIXELS := [
+	["..........", ".++....++.", "+##+..####", "+#########", ".########.", ".########.", "..######..", "...####...", "....##....", ".........."],
+	["..........", "...####...", "..##+#++..", ".###++##+.", ".+###++##.", ".-###++##.", ".-######-.", "..------..", "..........", ".........."],
+	["....##....", "....##....", "...####...", "...####...", "..#+####..", ".#+######.", ".#+######.", ".##-####-.", "..------..", ".........."],
+	[".....###..", "....+##...", "...+##....", "..+######.", ".+#######.", "....###...", "...###....", "...##.....", "..##......", "..#......."],
+]
 
 var game
 var needs := {"saude":100.0, "fome":92.0, "sede":89.0, "energia":100.0}
@@ -41,6 +48,7 @@ var window_title: Label
 var feedback: Label
 var hud: GridContainer
 var meter_labels: Array[Label] = []
+var meter_cards: Array[PanelContainer] = []
 var bars: Array[ProgressBar] = []
 var pulse := 0.0
 var restock_label: Label
@@ -156,9 +164,9 @@ func objective_text() -> String:
 func layout(available_width: float) -> void:
 	var width := minf(400.0, available_width)
 	hud.position = Vector2(12, 12)
+	for card in meter_cards:
+		card.custom_minimum_size.x = (width - 8.0) * 0.5
 	hud.size.x = width
-	for bar in bars:
-		bar.custom_minimum_size.x = (width - 12.0) * 0.5
 	if panel.visible:
 		_position_panel()
 
@@ -325,29 +333,55 @@ func _build_hud() -> void:
 	hud.add_theme_constant_override("v_separation", 4)
 	layer.add_child(hud)
 	for i in NEEDS.size():
-		var pair := VBoxContainer.new()
-		pair.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		pair.add_theme_constant_override("separation", 1)
-		var label := Label.new()
-		label.add_theme_font_size_override("font_size", 16)
-		label.add_theme_color_override("font_shadow_color", Color.BLACK)
-		label.add_theme_constant_override("shadow_offset_x", 1)
-		label.add_theme_constant_override("shadow_offset_y", 1)
-		pair.add_child(label)
+		var card := PanelContainer.new()
+		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var plate := StyleBoxFlat.new()
+		plate.bg_color = Color(0.09, 0.11, 0.15, 0.94)
+		plate.border_color = Color(COLORS[i], 0.38)
+		plate.set_border_width_all(1)
+		plate.set_corner_radius_all(5)
+		plate.content_margin_left = 6
+		plate.content_margin_right = 6
+		plate.content_margin_top = 3
+		plate.content_margin_bottom = 3
+		card.add_theme_stylebox_override("panel", plate)
+		hud.add_child(card)
+		meter_cards.append(card)
+		var row := HBoxContainer.new()
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_theme_constant_override("separation", 5)
+		card.add_child(row)
+		var icon := TextureRect.new()
+		icon.texture = _meter_icon(i)
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.custom_minimum_size = Vector2(20, 20)
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(icon)
 		var bar := ProgressBar.new()
 		bar.show_percentage = false
-		bar.custom_minimum_size = Vector2(125, 7)
+		bar.custom_minimum_size.y = 6
+		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var background := StyleBoxFlat.new()
-		background.bg_color = Color("#23212b")
+		background.bg_color = Color("#383d49")
+		background.set_corner_radius_all(3)
 		var fill := StyleBoxFlat.new()
 		fill.bg_color = COLORS[i]
+		fill.set_corner_radius_all(3)
 		bar.add_theme_stylebox_override("background", background)
 		bar.add_theme_stylebox_override("fill", fill)
-		pair.add_child(bar)
-		hud.add_child(pair)
-		meter_labels.append(label)
+		row.add_child(bar)
 		bars.append(bar)
+		var label := Label.new()
+		label.custom_minimum_size.x = 25
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		label.add_theme_font_size_override("font_size", 13)
+		label.add_theme_color_override("font_color", Color("#f7f2e7"))
+		row.add_child(label)
+		meter_labels.append(label)
 	feedback = Label.new()
 	feedback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -441,11 +475,24 @@ func _button(caption: String, action: Callable, item := "") -> void:
 	body.add_child(btn)
 
 
+func _meter_icon(index: int) -> ImageTexture:
+	var pixels: Array = METER_PIXELS[index]
+	var image := Image.create_empty(10, 10, false, Image.FORMAT_RGBA8)
+	var color: Color = COLORS[index]
+	var palette := {"#": color, "+": color.lightened(0.46), "-": color.darkened(0.36)}
+	for y in pixels.size():
+		var line: String = pixels[y]
+		for x in line.length():
+			if palette.has(line[x]):
+				image.set_pixel(x, y, palette[line[x]])
+	return ImageTexture.create_from_image(image)
+
+
 func _update_hud() -> void:
 	for i in NEEDS.size():
 		var amount := float(needs[NEEDS[i]])
 		bars[i].value = amount
-		meter_labels[i].text = "%s %d" % [["Saúde","Fome","Sede","Energia"][i], roundi(amount)]
+		meter_labels[i].text = str(roundi(amount))
 
 
 func _notify(message: String) -> void:
