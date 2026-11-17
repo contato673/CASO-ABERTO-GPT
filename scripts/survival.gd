@@ -14,6 +14,7 @@ const CLOTHES := {
 const SAVE := "user://campo_grande_survival_v1.json"
 const ART := "res://assets/survival_local/"
 const CAPACITY := 18
+const INFECTED_HEALTH := 65.0
 const CHEST_CAPACITY := 60
 const LOOT_MIN_SECONDS := 2 * 3600
 const LOOT_MAX_SECONDS := 6 * 3600
@@ -1258,6 +1259,7 @@ func _population(here: Vector2) -> void:
 		var z: Dictionary = infected[i]
 		var d: float = here.distance_to(z["pos"])
 		if d > 115.0 or (z["state"] == "dead" and z["timer"] <= 0.0):
+			_clear_hit_feedback(z)
 			z["node"].queue_free()
 			infected.remove_at(i)
 	if infected.size() >= 28:
@@ -1290,7 +1292,7 @@ func _population(here: Vector2) -> void:
 		sprite.position = Vector3(start.x, 0.04, start.y)
 		var tangent: Vector2 = lane[1]
 		infected.append({"node":sprite, "pos":start, "home":start, "patrol":start+tangent*8.0,
-			"target":start, "state":"patrol", "timer":0.0, "hp":65.0, "seen":0.0, "bite":0.0,
+			"target":start, "state":"patrol", "timer":0.0, "hp":INFECTED_HEALTH, "seen":0.0, "bite":0.0,
 			"retry":0.0, "path":PackedVector2Array(), "walk":randf() * TAU, "speed":randf_range(1.85, 2.7),
 			"frame_size":frame_size, "voice":voice, "pitch":randf_range(0.83, 1.16), "voice_in":randf_range(1.0, 5.0)})
 		break
@@ -1367,7 +1369,9 @@ func _update_infected(here: Vector2, delta: float, protected: bool) -> void:
 
 
 func _damage_zombie(z: Dictionary, amount: float) -> void:
-	z["hp"] = float(z["hp"]) - amount
+	var damage := minf(float(z["hp"]), amount)
+	z["hp"] = float(z["hp"]) - damage
+	_show_hit_feedback(z, damage)
 	var sprite: Sprite3D = z["node"]
 	if z["hp"] <= 0:
 		z["state"] = "dead"
@@ -1380,6 +1384,75 @@ func _damage_zombie(z: Dictionary, amount: float) -> void:
 		z["state"] = "chase"
 		z["target"] = game._actor_pos()
 		z["seen"] = 6.0
+
+
+func _show_hit_feedback(z: Dictionary, damage: float) -> void:
+	if not z.has("hit_panel"):
+		var badge := PanelContainer.new()
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var backdrop := StyleBoxFlat.new()
+		backdrop.bg_color = Color(0.08, 0.07, 0.11, 0.92)
+		backdrop.set_corner_radius_all(4)
+		backdrop.content_margin_left = 5
+		backdrop.content_margin_right = 5
+		backdrop.content_margin_top = 2
+		backdrop.content_margin_bottom = 4
+		badge.add_theme_stylebox_override("panel", backdrop)
+		var stack := VBoxContainer.new()
+		stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		stack.add_theme_constant_override("separation", 2)
+		badge.add_child(stack)
+		var label := Label.new()
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", 13)
+		stack.add_child(label)
+		var bar := ProgressBar.new()
+		bar.max_value = INFECTED_HEALTH
+		bar.show_percentage = false
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar.custom_minimum_size = Vector2(66, 5)
+		var fill := StyleBoxFlat.new()
+		fill.bg_color = Color("#ff776e")
+		var base := StyleBoxFlat.new()
+		base.bg_color = Color("#49333b")
+		bar.add_theme_stylebox_override("fill", fill)
+		bar.add_theme_stylebox_override("background", base)
+		stack.add_child(bar)
+		feedback.get_parent().add_child(badge)
+		z["hit_panel"] = badge
+		z["hit_label"] = label
+		z["hit_bar"] = bar
+	var hp := int(z["hp"])
+	z["hit_label"].text = "ABATIDO" if hp <= 0 else "−%d   %d/%d" % [roundi(damage), hp, int(INFECTED_HEALTH)]
+	z["hit_label"].modulate = Color("#ffe5a1") if hp <= 0 else Color.WHITE
+	z["hit_bar"].value = hp
+	z["hit_bar"].visible = hp > 0
+	z["hit_time"] = 2.3 if hp <= 0 else 4.0
+
+
+func update_hit_feedback(delta: float) -> void:
+	for z in infected:
+		if not z.has("hit_panel"):
+			continue
+		z["hit_time"] = float(z["hit_time"]) - delta
+		if z["hit_time"] <= 0.0:
+			_clear_hit_feedback(z)
+			continue
+		var badge: PanelContainer = z["hit_panel"]
+		var at: Vector2 = z["pos"]
+		var anchor := Vector3(at.x, 1.4 if z["state"] == "dead" else 3.1, at.y)
+		var point: Vector2 = game.cam.unproject_position(anchor)
+		badge.visible = not game.cam.is_position_behind(anchor) and not game.menu_open
+		badge.position = (point - Vector2(badge.size.x * 0.5, badge.size.y)).round()
+
+
+func _clear_hit_feedback(z: Dictionary) -> void:
+	if z.has("hit_panel"):
+		z["hit_panel"].queue_free()
+		z.erase("hit_panel")
+		z.erase("hit_label")
+		z.erase("hit_bar")
+		z.erase("hit_time")
 
 
 func _clear_line(a: Vector2, b: Vector2) -> bool:
@@ -1403,6 +1476,7 @@ func _revive() -> void:
 	bag = {"food":1,"water":1,"bat":1}
 	needs = {"saude":100.0,"fome":68.0,"sede":68.0,"energia":72.0}
 	for z in infected:
+		_clear_hit_feedback(z)
 		z["node"].queue_free()
 	infected.clear()
 	noises.clear()

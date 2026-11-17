@@ -97,6 +97,7 @@ var walker: Sprite3D
 var walker_outline: Sprite3D
 var walk_cycle := 0.0
 var walk_face := 1
+var walk_heading := Vector2(-1, 1).normalized()
 var btn_car: Button
 var street_hour := 12.0
 var car_heading := 0.0
@@ -359,6 +360,7 @@ func _process(delta: float) -> void:
 	_signals_update(delta)
 	survival.tick(delta)
 	_update_camera(delta)
+	survival.update_hit_feedback(delta)
 	_update_goal_arrow()
 	if street_last_pos.distance_squared_to(_actor_pos()) > 6.25:
 		street_last_pos = _actor_pos()
@@ -1317,6 +1319,7 @@ func _walk(delta: float) -> void:
 func _walk_move(motion: Vector2) -> void:
 	if _walk_blocked(walk_pos):
 		walk_pos = _recover_walk_position(walk_pos)
+	var start := walk_pos
 	var pieces := maxi(1, ceili(motion.length() / 0.45))
 	var step := motion / float(pieces)
 	for i in pieces:
@@ -1324,6 +1327,9 @@ func _walk_move(motion: Vector2) -> void:
 			var next: Vector2 = walk_pos + part
 			if not _walk_blocked(next) and not _pedestrian_blocks(walk_pos, next, walker):
 				walk_pos = next
+	var travelled := walk_pos - start
+	if travelled.length_squared() > 0.000001:
+		walk_heading = travelled.normalized()
 
 
 func _walk_blocked(at: Vector2) -> bool:
@@ -3516,6 +3522,11 @@ func _mm_pos(p: Vector2) -> Vector2:
 	return minimap.size * 0.5 + Vector2(-d.x + d.y, -(d.x + d.y)) * 0.70710678 * mm_scale
 
 
+func _minimap_heading() -> Vector2:
+	var direction := walk_heading if on_foot else Vector2.from_angle(car_heading)
+	return (_mm_pos(_actor_pos() + direction) - _mm_pos(_actor_pos())).normalized()
+
+
 func _draw_minimap() -> void:
 	var sz := minimap.size
 	var half := sz * 0.5
@@ -3560,7 +3571,6 @@ func _draw_minimap() -> void:
 				q = half + dv * sc
 			minimap.draw_circle(q, 11.0 * pulse, Color(0.1, 0.08, 0.02))
 			minimap.draw_circle(q, 8.5 * pulse, Color(1.0, 0.85, 0.2))
-	var h := Vector2(cos(car_heading), sin(car_heading))
 	if on_foot:
 		for index in _nearby_cars(walk_pos, 90.0):
 			var v: Dictionary = parked_vehicles[index]
@@ -3571,9 +3581,7 @@ func _draw_minimap() -> void:
 				minimap.draw_rect(Rect2(point - Vector2(3.5, 2.5), Vector2(7, 5)), Color("#7cdfb5"))
 	if on_foot and survival.active_vehicle >= 0:
 		minimap.draw_circle(_mm_pos(car_pos), 4.0, Color("#ffd284"))
-	var sx := (-h.x + h.y) * 0.70710678
-	var sy := -(h.x + h.y) * 0.70710678
-	var u := Vector2(sx, sy).normalized()
+	var u := _minimap_heading()
 	var n := Vector2(-u.y, u.x)
 	var pl := PackedVector2Array([half + u * 13.0, half - u * 9.0 + n * 9.0, half - u * 4.0, half - u * 9.0 - n * 9.0])
 	minimap.draw_colored_polygon(pl, Color(1.0, 0.25, 0.2))
