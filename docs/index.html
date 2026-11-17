@@ -93,7 +93,7 @@ body {
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
 
-	<meta name="game-release" content="d89a0da238b1">
+	<meta name="game-release" content="15709b14a3ac">
 </head>
 	<body>
 		<canvas id="canvas">
@@ -110,9 +110,9 @@ body {
 			<div id="status-notice"></div>
 		</div>
 
-		<script src="index.js?v=d89a0da238b1"></script>
+		<script src="index.js?v=15709b14a3ac"></script>
 		<script>
-const GODOT_CONFIG = {"args":["--main-pack","index.pck"],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.wasm":39514754,"index.pck?v=d89a0da238b1":5564768},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":["--main-pack","index.pck"],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.wasm":39514754,"index.pck?v=15709b14a3ac":5569600},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
@@ -221,7 +221,7 @@ const engine = new Engine(GODOT_CONFIG);
 		}
 	} else {
 		setStatusMode('progress');
-		Promise.all([engine.init("index"), engine.preloadFile("index.pck?v=d89a0da238b1", "index.pck")]).then(() => engine.start({
+		Promise.all([engine.init("index"), engine.preloadFile("index.pck?v=15709b14a3ac", "index.pck")]).then(() => engine.start({
 			'onProgress': function (current, total) {
 				if (current > 0 && total > 0) {
 					statusProgress.value = current;

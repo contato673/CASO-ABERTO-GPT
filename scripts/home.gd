@@ -200,7 +200,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 	elif ev is InputEventMouseMotion and not ghost.is_empty() and (ev.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
 		var p2 := _floor_point(ev.position)
 		if p2.x > -999.0:
-			ghost["pos"] = _clamp_pos(p2, str(ghost["kind"]))
+			ghost["pos"] = _clamp_pos(p2,str(ghost["kind"]),float(ghost["rot"]))
 			_update_ghost_node()
 
 
@@ -534,10 +534,28 @@ func _floor_point(sp: Vector2) -> Vector2:
 	return Vector2(l.x, l.z)
 
 
-func _clamp_pos(p: Vector2, kind: String) -> Vector2:
-	var sz: Vector3 = (FURN[kind] as Dictionary)["size"]
-	var m := maxf(sz.x, sz.z) * 0.5
-	return Vector2(clampf(p.x, m, ROOM - m), clampf(p.y, m, ROOM - m))
+func _furniture_footprint(kind: String, rotation: float) -> Vector2:
+	var size: Vector3 = FURN[kind]["size"]
+	return Vector2(size.z,size.x) if posmod(roundi(rotation/(PI*.5)),2) == 1 else Vector2(size.x,size.z)
+
+
+func _clamp_pos(p: Vector2, kind: String, rotation := 0.0) -> Vector2:
+	var margin := _furniture_footprint(kind,rotation)*.5 + Vector2(.05,.05)
+	return p.clamp(margin,Vector2(ROOM,ROOM)-margin)
+
+
+func _can_place_furniture(at: Vector2, kind: String, rotation: float) -> bool:
+	var size := _furniture_footprint(kind,rotation)
+	var target := Rect2(at-size*.5,size).grow(.06)
+	for item in furniture:
+		var other_kind := str(item["kind"])
+		if not FURN.has(other_kind):
+			continue
+		var other_size := _furniture_footprint(other_kind,float(item["rot"]))
+		var center := Vector2(float(item["x"]),float(item["z"]))
+		if target.intersects(Rect2(center-other_size*.5,other_size)):
+			return false
+	return true
 
 
 func _pick_screen(sp: Vector2) -> int:
@@ -565,7 +583,7 @@ func _on_click(sp: Vector2) -> void:
 	if not ghost.is_empty():
 		var p := _floor_point(sp)
 		if p.x > -999.0:
-			ghost["pos"] = _clamp_pos(p, str(ghost["kind"]))
+			ghost["pos"] = _clamp_pos(p,str(ghost["kind"]),float(ghost["rot"]))
 			_update_ghost_node()
 		return
 	var idx := _pick_screen(sp)
@@ -619,7 +637,8 @@ func _start_ghost(kind: String, from_inv: bool, old: Dictionary) -> void:
 func _update_ghost_node() -> void:
 	if ghost_node == null or ghost.is_empty():
 		return
-	var gp: Vector2 = ghost["pos"]
+	var gp: Vector2 = _clamp_pos(ghost["pos"],str(ghost["kind"]),float(ghost["rot"]))
+	ghost["pos"] = gp
 	ghost_node.position = Vector3(gp.x, 0.0, gp.y)
 	ghost_node.rotation.y = float(ghost["rot"])
 
@@ -636,6 +655,9 @@ func _confirm_ghost() -> void:
 	if ghost.is_empty():
 		return
 	var gp: Vector2 = ghost["pos"]
+	if not _can_place_furniture(gp,str(ghost["kind"]),float(ghost["rot"])):
+		_notice("Esse espaço já está ocupado.")
+		return
 	furniture.append({"kind": ghost["kind"], "x": gp.x, "z": gp.y, "rot": ghost["rot"]})
 	_end_ghost()
 	_rebuild_furniture()
@@ -674,11 +696,34 @@ func _rebuild_furniture() -> void:
 			continue
 		var sz: Vector3 = d["size"]
 		var holder := Node3D.new()
-		holder.position = Vector3(float(it["x"]), 0.0, float(it["z"]))
+		var at := _clamp_pos(Vector2(float(it["x"]),float(it["z"])),str(it["kind"]),float(it["rot"]))
+		holder.position = Vector3(at.x,0,at.y)
 		holder.rotation.y = float(it["rot"])
 		furn_root.add_child(holder)
-		if _glb("moveis/" + str(it["kind"]) + ".glb", holder) == null:
-			_box(sz, Vector3(0.0, sz.y * 0.5, 0.0), d["color"], holder)
+		var model := _glb("moveis/" + str(it["kind"]) + ".glb",holder)
+		if model == null:
+			_box(sz,Vector3(0.0,sz.y*.5,0.0),d["color"],holder)
+		else:
+			_set_furniture_base(model,holder,sz)
+
+
+func _set_furniture_base(model: Node3D, holder: Node3D, size: Vector3) -> void:
+	var local := holder.global_transform.affine_inverse()
+	var stack: Array[Node] = [model]
+	var measured := AABB()
+	while not stack.is_empty():
+		var part: Node = stack.pop_back()
+		if part is MeshInstance3D and part.mesh != null:
+			var box: AABB = (local * part.global_transform) * part.mesh.get_aabb()
+			measured = measured.merge(box) if measured.has_volume() else box
+		for child in part.get_children():
+			stack.append(child)
+	if not measured.has_volume():
+		return
+	var factor := minf(1.0,minf(size.x/measured.size.x,size.z/measured.size.z))
+	var center := measured.get_center()
+	var base := Vector3(center.x,measured.position.y,center.z)
+	model.transform = Transform3D(Basis.from_scale(Vector3.ONE*factor),-base*factor) * model.transform
 
 
 func _inv(kind: String) -> int:

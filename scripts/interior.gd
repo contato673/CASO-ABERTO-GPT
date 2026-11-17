@@ -86,6 +86,7 @@ var pos := Vector2(5.6, 9.75)
 var scene: Node3D
 var actor: Sprite3D
 var obstacles: Array[Rect2] = []
+var furniture_bounds: Array[Rect2] = []
 var floor_shape := PackedVector2Array()
 var sockets: Array[Dictionary] = []
 var actions: Array[Dictionary] = []
@@ -193,6 +194,7 @@ func leave() -> void:
 	actions.clear()
 	sockets.clear()
 	obstacles.clear()
+	furniture_bounds.clear()
 	if avatar_art.size() > 12:
 		avatar_art.clear()
 	art.clear()
@@ -333,6 +335,7 @@ func _build_floor() -> void:
 	scene = Node3D.new()
 	add_child(scene)
 	obstacles.clear()
+	furniture_bounds.clear()
 	sockets.clear()
 	actions.clear()
 	pickups.clear()
@@ -493,6 +496,11 @@ func _image(name: String) -> Texture2D:
 	if not ResourceLoader.exists(path):
 		path = ART + str(FALLBACK.get(name, "parcel")) + ".png"
 	var loaded := load(path) as Texture2D
+	var image := loaded.get_image()
+	image.convert(Image.FORMAT_RGBA8)
+	var ink := image.get_used_rect()
+	if ink.has_area() and ink.size != image.get_size():
+		loaded = ImageTexture.create_from_image(image.get_region(ink))
 	art[name] = loaded
 	return loaded
 
@@ -509,36 +517,85 @@ func _sprite(texture: Texture2D, at: Vector2, height: float) -> Sprite3D:
 	scene.add_child(sprite)
 	return sprite
 
+func _fixture_fits(at: Vector2, footprint: Vector2) -> bool:
+	var half := footprint*.5 + Vector2(.10,.10)
+	var bounds := Rect2(at-half,half*2)
+	for corner in [bounds.position,Vector2(bounds.end.x,bounds.position.y),bounds.end,Vector2(bounds.position.x,bounds.end.y)]:
+		if not Geometry2D.is_point_in_polygon(corner,floor_shape):
+			return false
+	if floor_index == 0 and bounds.grow(.48).has_point(_mapped(Vector2(5.7,span.y-.86))):
+		return false
+	return not obstacles.any(func(shape: Rect2): return bounds.intersects(shape.grow(.095)))
+
+
+func _fixture_position(desired: Vector2, footprint: Vector2) -> Vector2:
+	if _fixture_fits(desired,footprint):
+		return desired
+	for ring in range(1,15):
+		for heading in 16:
+			var candidate := desired + Vector2.RIGHT.rotated(heading*TAU/16) * (ring*.22)
+			if _fixture_fits(candidate,footprint):
+				return candidate
+	return Vector2.INF
+
+
+func _contact_shadow(at: Vector2, footprint: Vector2) -> void:
+	var shadow := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = footprint * .93
+	shadow.mesh = plane
+	var ink := StandardMaterial3D.new()
+	ink.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ink.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ink.albedo_color = Color(.10,.12,.14,.27)
+	shadow.material_override = ink
+	shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	shadow.position = _v(at,.015)
+	scene.add_child(shadow)
+
+
 func _prop(row: Array) -> void:
-	var at := _put_inside(_mapped(Vector2(row[1], row[2])))
-	if not at.is_finite():
-		return
 	var model: String = row[0]
 	var height: float = row[3]
+	var texture: Texture2D
 	var footprint := Vector2(.85,.65)
 	if model == "bed":
 		footprint = Vector2(1.26,2.07)
-		_box(_v(at,.17),Vector3(footprint.x,.30,footprint.y),Color("#695849"))
+	elif model == "sofa":
+		footprint = Vector2(2.07,.87)
+	else:
+		texture = _image(model)
+		var width := clampf(float(texture.get_width()) * height / texture.get_height() * .75,.43,2.0)
+		var depth: float = {"table":.86,"coffee":.70,"desk":.77,"reception":.86,"teacher":.78,
+			"fridge":.72,"cupboard":.61,"wardrobe":.63,"bath":.91,"generator":.69}.get(model,.52 if height < 1.1 else .65)
+		footprint = Vector2(width,depth)
+	var at := _fixture_position(_mapped(Vector2(row[1],row[2])),footprint)
+	if not at.is_finite():
+		return
+	_contact_shadow(at,footprint)
+	if model == "bed":
+		_box(_v(at,.15),Vector3(footprint.x,.30,footprint.y),Color("#695849"))
 		_box(_v(at,.38),Vector3(1.20,.19,1.97),Color("#e1d4bd"))
 		_box(_v(at+Vector2(0,.25),.486),Vector3(1.19,.055,1.42),Color("#527998"))
 		_box(_v(at+Vector2(0,-.68),.513),Vector3(.74,.105,.41),Color("#f3e8d4"))
 		_box(_v(at+Vector2(0,-.99),.43),Vector3(1.25,.81,.13),Color("#75634d"))
-		height = .52
+		height = .53
 	elif model == "sofa":
-		footprint = Vector2(2.07,.87)
 		var fabric := Color("#48708a")
-		_box(_v(at,.24),Vector3(2.06,.39,.87),fabric.darkened(.28))
+		_box(_v(at,.22),Vector3(2.06,.44,.87),fabric.darkened(.28))
 		_box(_v(at+Vector2(0,-.31),.61),Vector3(2.04,.61,.21),fabric)
 		_box(_v(at+Vector2(0,.075),.448),Vector3(1.64,.13,.63),fabric.lightened(.12))
 		for side in [-.93,.93]:
 			_box(_v(at+Vector2(side,.015),.56),Vector3(.22,.28,.76),fabric)
 		height = .52
 	else:
-		var sprite := _sprite(_image(model),at,height)
-		var width := clampf(float(sprite.texture.get_width()) * sprite.pixel_size * .69,.43,2.0)
-		footprint = Vector2(width,.53 if height < 1.1 else .7)
+		var contact := at + Vector2.ONE * (minf(footprint.x,footprint.y) * .27)
+		var sprite := _sprite(texture,contact,height)
+		sprite.position.y = .016
+	var bounds := Rect2(at-footprint*.5,footprint)
+	furniture_bounds.append(bounds)
 	if model != "rubble":
-		obstacles.append(Rect2(at-footprint*.5,footprint))
+		obstacles.append(bounds)
 	if not str(row[4]).is_empty():
 		sockets.append({"pos":at,"zone":row[4],"height":height})
 	if row.size() > 5:
@@ -670,14 +727,20 @@ func _refresh_stock() -> void:
 			level = 0
 		if level != floor_index:
 			continue
-		var socket_id: int = possible[int(hash(str(site["id"]) + str(item))) % possible.size()]
+		var preferred := int(hash(str(site["id"]) + str(item))) % possible.size()
+		var socket_id := possible[preferred]
+		for index in possible:
+			if int(used.get(index,0)) < int(used.get(socket_id,0)):
+				socket_id = index
 		var slot: Dictionary = sockets[socket_id]
 		var offset := int(used.get(socket_id,0))
 		used[socket_id] = offset + 1
-		var at: Vector2 = slot["pos"] + Vector2((offset%3-1)*.55,-.23 - float(floori(float(offset)/3))*.23)
-		var marker := _sprite(_loot_icon(item),at,.88)
+		var at: Vector2 = slot["pos"]
+		var spread := 0.0 if offset == 0 else (1.0 if offset % 2 == 1 else -1.0) * (.43 + .28*floori(float(offset-1)/2))
+		var icon_at := at + Vector2(.707,-.707) * spread
+		var marker := _sprite(_loot_icon(item),icon_at,1.08)
 		marker.offset.y = 0
-		marker.position.y = float(slot["height"]) * .81 + .34
+		marker.position.y = float(slot["height"]) + .37 + .24*floori(float(offset)/3)
 		marker.no_depth_test = true
 		marker.render_priority = 10
 		pickups.append({"item":item,"pos":at,"target":marker,

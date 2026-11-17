@@ -4130,6 +4130,19 @@ func _draw_minimap() -> void:
 				home_point + Vector2(6, 0), home_point + Vector2(4, 0), home_point + Vector2(4, 5),
 				home_point + Vector2(-4, 5), home_point + Vector2(-4, 0)])
 			minimap.draw_colored_polygon(house, Color("#9bd9ee"))
+	if alpha.live:
+		for person in alpha.people.values():
+			var sprite: Sprite3D = person["sprite"]
+			var projected := _mm_pos(Vector2(sprite.position.x,sprite.position.z))
+			var offset := projected-half
+			var edge := half-Vector2(10,10)
+			var ratio := maxf(1.0,maxf(absf(offset.x)/edge.x,absf(offset.y)/edge.y))
+			var marker := half + offset/ratio
+			var radius := 6.0 if ratio == 1.0 else 4.0
+			var diamond := PackedVector2Array([marker+Vector2.UP*radius,marker+Vector2.RIGHT*radius,
+				marker+Vector2.DOWN*radius,marker+Vector2.LEFT*radius,marker+Vector2.UP*radius])
+			minimap.draw_colored_polygon(diamond,Color("#64ccff"))
+			minimap.draw_polyline(diamond,Color("#122841"),2.0,true)
 	var u := _minimap_heading()
 	var n := Vector2(-u.y, u.x)
 	var pl := PackedVector2Array([half + u * 13.0, half - u * 9.0 + n * 9.0, half - u * 4.0, half - u * 9.0 - n * 9.0])

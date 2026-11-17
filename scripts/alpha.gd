@@ -1,5 +1,7 @@
 extends Node
 
+const WORLD_NAME := "Big Field"
+
 var game: Node3D
 var endpoint := ""
 var account := ""
@@ -58,7 +60,7 @@ func _build_login() -> void:
 	form.add_theme_constant_override("separation", 12)
 	center.add_child(form)
 	var title := Label.new()
-	title.text = "Zona de Quarentena"
+	title.text = WORLD_NAME
 	title.add_theme_font_size_override("font_size", 27)
 	title.add_theme_color_override("font_color", Color("#eec477"))
 	form.add_child(title)
@@ -91,9 +93,9 @@ func _field(form: VBoxContainer, placeholder: String, maximum: int, secret: bool
 
 
 func _refresh_login() -> void:
-	notice.text = "Cadastro por convite. A senha deve ter pelo menos 10 caracteres." if registering else "Alpha fechado · Campo Grande/MS"
+	notice.text = "Cadastro por convite. A senha deve ter pelo menos 10 caracteres." if registering else "Campo Grande/MS · Alpha fechado para 10 jogadores"
 	invite.visible = registering
-	submit.text = "Criar conta" if registering else "Entrar"
+	submit.text = "Criar conta e entrar" if registering else "Entrar no Big Field"
 	mode.text = "Já tenho conta" if registering else "Tenho um convite"
 
 
@@ -168,7 +170,7 @@ func tick(delta: float) -> void:
 		outgoing = 0.0
 		var point: Vector2 = game._actor_pos()
 		socket.send_text(JSON.stringify({"kind":"pose", "x":point.x, "y":point.y, "face":game.walk_face,
-			"driving":not game.on_foot, "inside":game.in_home or game.interior.active or game.survival.sheltered or game.survival.down or point.distance_to(game.survival.safe) < 8.0}))
+			"driving":not game.on_foot, "inside":game.in_home or game.interior.active or game.survival.sheltered or game.survival.down}))
 	_animate_people(delta)
 
 
@@ -241,7 +243,7 @@ func _animate_people(delta: float) -> void:
 		var sprite: Sprite3D = person["sprite"]
 		var target: Vector3 = person["target"]
 		sprite.position = sprite.position.lerp(target, 1.0 - exp(-delta * 13))
-		sprite.visible = not game.in_home
+		sprite.visible = not game.in_home and not game.interior.active
 		person["caption"].visible = sprite.position.distance_squared_to(game.walker.position) < 38.0 * 38.0
 		person["walk"] += delta * 8.0
 		var frame := int(person["walk"]) % 4 if person["moving"] else 0
