@@ -4,7 +4,7 @@ Sobrevivência isométrica nas ruas de Campo Grande, Mato Grosso do Sul.
 
 [**Jogar no navegador ou no celular**](https://contato673.github.io/CASO-ABERTO-GPT/) · [Versão Windows](versoes/Caso-Aberto-Windows.zip) · [Capturas de teste](testes-visuais/sobrevivencia/)
 
-Na primeira abertura desta versão, crie seu sobrevivente e leia o bilhete de Bia. Em um jogo novo, a história começa perto do Posto Barão, na Rua Barão do Rio Branco. A primeira missão pede um kit de primeiros socorros na Pague Menos da Rua 13 de Maio. O minimapa marca o destino. Em locais trancados, quebrar um vidro libera a busca e alerta infectados próximos.
+Na primeira abertura de cada nova publicação, crie seu sobrevivente e leia o bilhete de Bia. Cada versão começa do zero e usa seu próprio save. Ao recarregar a mesma versão, você continua de onde parou. Em um jogo novo, a história começa perto do Posto Barão, na Rua Barão do Rio Branco. A primeira missão pede um kit de primeiros socorros na Pague Menos da Rua 13 de Maio. O minimapa marca o destino. Em locais trancados, quebrar um vidro libera a busca e alerta infectados próximos.
 
 | Controle | Ação |
 | --- | --- |

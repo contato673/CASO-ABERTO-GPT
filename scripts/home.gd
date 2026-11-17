@@ -14,7 +14,6 @@ const ROOM := 5.0
 const WALL_H := 2.6
 const MODEL_DIR := "res://assets/modelos/"
 const WALL_T := 0.15
-const SAVE_PATH := "user://casa_v2.json"
 const WALK_SPEED := 2.2
 const VISITOR_SPEED := 1.4
 const WORK_PAY := 40
@@ -69,6 +68,7 @@ const FURN := {
 }
 const TAB_NAMES := ["Avatar", "Loja", "Móveis", "Garagem", "Convidados"]
 
+var save_path := "user://casa-%s.json" % ProjectSettings.get_setting("application/config/version", "dev")
 var cfg: Dictionary = {}
 var owned: Dictionary = {}
 var inventory: Dictionary = {}
@@ -1085,9 +1085,9 @@ func _ints(arr) -> Array:
 func _load() -> void:
 	cfg = {"pele": 0, "cabelo": 0, "cor_cabelo": 0, "altura": 1, "camisa": 0, "calca": 0, "oculos": 0, "nome": "Você", "carro": DEFAULT_CAR}
 	owned = {"camisa": [0, 1], "calca": [0, 1], "carros": [DEFAULT_CAR]}
-	if not FileAccess.file_exists(SAVE_PATH):
+	if not FileAccess.file_exists(save_path):
 		return
-	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
+	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
 	if typeof(data) != TYPE_DICTIONARY:
 		return
 	var c = data.get("cfg", {})
@@ -1110,7 +1110,7 @@ func _load() -> void:
 
 
 func _save() -> void:
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f == null:
 		return
 	f.store_string(JSON.stringify({"cfg": cfg, "owned": owned, "furniture": furniture, "inventory": inventory, "dinheiro": money_now}))

@@ -11,7 +11,6 @@ const CLOTHES := {
 	"shirt": preload("res://assets/equipamento/shirt.png"),
 	"coat": preload("res://assets/equipamento/coat.png"),
 }
-const SAVE := "user://campo_grande_survival_v1.json"
 const ART := "res://assets/survival_local/"
 const CAPACITY := 18
 const INFECTED_HEALTH := 65.0
@@ -69,6 +68,7 @@ const METER_PIXELS := [
 	[".....###..", "....+##...", "...+##....", "..+######.", ".+#######.", "....###...", "...###....", "...##.....", "..##......", "..#......."],
 ]
 
+var save_path := "user://sobrevivencia-%s.json" % ProjectSettings.get_setting("application/config/version", "dev")
 var game
 var needs := {"saude":100.0, "fome":92.0, "sede":89.0, "energia":100.0}
 var bag := {"water":1, "food":1, "bat":1}
@@ -1647,7 +1647,7 @@ func save() -> void:
 		info["fuel"] = fuel
 		taken[str(active_vehicle)] = _vehicle_record(info)
 	var player: Vector2 = game._actor_pos()
-	var f := FileAccess.open(SAVE, FileAccess.WRITE)
+	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f != null:
 		f.store_string(JSON.stringify({"on_foot":game.on_foot,"in_home":game.in_home and game.intro_state == 0,"areas":containers,"bag":bag,"equipped":equipped,"outfit":outfit,"dirty_hands":dirty_hands,"chest":chest,"needs":needs,"taken":taken,"parked_heading_v2":true,"vehicle":active_vehicle,
 			"fuel":fuel,"quest":quest,"found":supply_found,"reputation":reputation,"next":next_contract,"x":player.x,"y":player.y,
@@ -1656,9 +1656,9 @@ func save() -> void:
 
 func _load_progress() -> void:
 	game.walk_pos = safe
-	if not FileAccess.file_exists(SAVE):
+	if not FileAccess.file_exists(save_path):
 		return
-	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE))
+	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
 	if not data is Dictionary:
 		return
 	resume_at_home = bool(data.get("in_home", false))

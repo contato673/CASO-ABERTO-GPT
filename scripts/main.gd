@@ -57,6 +57,7 @@ const STORIES := [
 	"Nesse bairro a gente desconfia de todo mundo. Confie no que você vê, não no que ouvem por aí.",
 ]
 
+var save_path := "user://casos-%s.json" % ProjectSettings.get_setting("application/config/version", "dev")
 var city: Dictionary
 var roads: Array = []
 var pois: Array = []
@@ -141,7 +142,6 @@ var street_pos := Vector2.ZERO
 var street_heading := 0.0
 
 # caso 1 (individual): O relógio da estação
-const SAVE_PATH := "user://casos_v2.json"
 # Marcos reais de Campo Grande (posição convertida do OpenStreetMap para o mapa do jogo)
 const LANDMARKS := [
 	{"id": "relogio14", "name": "Relógio da 14 de Julho", "address": "Avenida Afonso Pena esquina com Rua 14 de Julho", "model": "relogio", "x": -3644.4, "y": 1421.0, "snapDist": 24.0, "npc": "Relojoeiro Anselmo", "line": "Este é o Relógio da 14, no cruzamento da Afonso Pena com a 14 de Julho. Ele nunca atrasa. Se o da estação parou às 3h17, alguém parou de propósito."},
@@ -3656,16 +3656,16 @@ func _show_notebook() -> void:
 
 
 func _save_case() -> void:
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f == null:
 		return
 	f.store_string(JSON.stringify({"edition": 2, "idx": case_idx, "step": case_step, "done": case_done, "clues": clues, "lead_ids": lead_ids}))
 
 
 func _load_case() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
+	if not FileAccess.file_exists(save_path):
 		return
-	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
+	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
 	if typeof(data) == TYPE_DICTIONARY:
 		case_idx = clampi(int(data.get("idx", 0)), 0, CASES.size() - 1)
 		case_step = clampi(int(data.get("step", 0)), 0, _cur_steps().size())

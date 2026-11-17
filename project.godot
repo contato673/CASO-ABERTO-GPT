@@ -10,6 +10,8 @@ config_version=5
 
 [application]
 
+config/version="ccb2800c3be8"
+
 config/name="Campo Grande: Zona de Quarentena"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="Caso Aberto Campo Grande"
