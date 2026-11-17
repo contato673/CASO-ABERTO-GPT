@@ -11,6 +11,7 @@ signal car_selected(path: String)
 
 const ORIGIN := Vector3(0.0, 0.0, 30000.0)
 const ROOM := 5.0
+const CHEST_AT := Vector2(3.62,.68)
 const WALL_H := 2.6
 const MODEL_DIR := "res://assets/modelos/"
 const WALL_T := 0.15
@@ -107,11 +108,7 @@ func _ready() -> void:
 	position = ORIGIN
 	_load()
 	if survival_mode and not cfg.has("survival_house_seeded"):
-		owned["camisa"] = range(SHIRT.size())
-		owned["calca"] = range(PANTS.size())
-		cfg["survival_house_seeded"] = true
-		if furniture.is_empty():
-			furniture.append({"kind":"cama", "x":0.82, "z":3.5, "rot":0.0})
+		seed_survival_room()
 		_save()
 	_build_room()
 	avatar = _make_avatar(cfg, self)
@@ -119,6 +116,18 @@ func _ready() -> void:
 	_rebuild_furniture()
 	_build_hud()
 	visible = false
+
+
+func seed_survival_room() -> void:
+	owned["camisa"] = range(SHIRT.size())
+	owned["calca"] = range(PANTS.size())
+	cfg["survival_house_seeded"] = true
+	if furniture.is_empty():
+		furniture.append({"kind":"cama","x":.82,"z":3.5,"rot":0.0})
+
+
+func near_chest() -> bool:
+	return active and pos.distance_to(CHEST_AT) < 1.55
 
 
 func enter() -> void:
@@ -183,7 +192,9 @@ func update(delta: float, jv: Vector2) -> void:
 		dir = dir.normalized()
 	var moving := dir.length() > 0.05
 	if moving:
-		pos += dir * WALK_SPEED * delta
+		var next := pos + dir * WALK_SPEED * delta
+		if not survival_mode or not Rect2(CHEST_AT-Vector2(.75,.49),Vector2(1.50,.98)).has_point(next):
+			pos = next
 		pos.x = clampf(pos.x, 0.45, ROOM - 0.45)
 		pos.y = clampf(pos.y, 0.45, ROOM - 0.45)
 		(avatar["node"] as Node3D).rotation.y = atan2(dir.x, dir.y)
@@ -254,6 +265,15 @@ func _build_room() -> void:
 	_box(Vector3(.052,.38,.74),Vector3(wf+.069,1.62,2.46),Color("#7d8c77"),room)
 	_box(Vector3(1.95,.016,1.37),Vector3(3.32,.012,3.55),Color("#654a45"),room)
 	_box(Vector3(1.76,.017,1.18),Vector3(3.32,.02,3.55),Color("#7b6555"),room)
+	if survival_mode:
+		var bin := Node3D.new()
+		bin.position = Vector3(CHEST_AT.x,0,CHEST_AT.y)
+		room.add_child(bin)
+		_box(Vector3(1.18,.46,.62),Vector3(0,.23,0),Color("#61472e"),bin)
+		_box(Vector3(1.23,.12,.67),Vector3(0,.51,0),Color("#9f7444"),bin)
+		for strap in [-.42,.42]:
+			_box(Vector3(.12,.52,.026),Vector3(strap,.26,.318),Color("#3e4243"),bin)
+		_box(Vector3(.14,.12,.035),Vector3(0,.42,.34),Color("#e5ab62"),bin)
 	furn_root = Node3D.new()
 	furn_root.name = "Moveis"
 	add_child(furn_root)
@@ -547,6 +567,8 @@ func _clamp_pos(p: Vector2, kind: String, rotation := 0.0) -> Vector2:
 func _can_place_furniture(at: Vector2, kind: String, rotation: float) -> bool:
 	var size := _furniture_footprint(kind,rotation)
 	var target := Rect2(at-size*.5,size).grow(.06)
+	if survival_mode and target.intersects(Rect2(CHEST_AT-Vector2(.64,.37),Vector2(1.28,.74))):
+		return false
 	for item in furniture:
 		var other_kind := str(item["kind"])
 		if not FURN.has(other_kind):

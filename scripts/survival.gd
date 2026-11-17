@@ -1,5 +1,7 @@
 extends Node
 
+const BALLISTICS := preload("res://scripts/ballistics.gd")
+
 const SURVIVORS := preload("res://scripts/survivors.gd")
 const INFECTED_SOUNDS := {
 	"moan": preload("res://assets/infectados/gemido.wav"),
@@ -20,7 +22,8 @@ const LOOT_MAX_SECONDS := 6 * 3600
 const ITEM_NAMES := {
 	"water": "Água", "food": "Conserva", "med": "Primeiros socorros",
 	"fuel": "Galão de combustível", "parts": "Peças", "bat": "Taco", "crowbar": "Pé de cabra",
-	"knife": "Faca", "pistol": "Pistola", "ammo": "Munição",
+	"knife": "Faca", "pistol": "Pistola 9 mm", "shotgun":"Escopeta calibre 12", "rifle":"Fuzil 5,56 mm",
+	"ammo": "Caixa de munição 9 mm", "shells":"Caixa calibre 12", "ammo_556":"Caixa de munição 5,56 mm",
 	"jacket": "Jaqueta verde", "shirt": "Camiseta azul", "coat": "Casaco ocre",
 	"cloth":"Retalho", "wood":"Madeira", "dirty_water":"Água turva", "bandage":"Bandagem",
 	"noise_maker":"Isca sonora", "manual":"Manual de oficina"
@@ -30,22 +33,33 @@ const WEAPONS := {
 	"knife": {"reach": 2.25, "damage": 24.0, "duration": 0.43, "impact": 0.15, "noise": 9.0},
 	"bat": {"reach": 3.05, "damage": 30.0, "duration": 0.64, "impact": 0.25, "noise": 13.0},
 	"crowbar": {"reach": 3.05, "damage": 38.0, "duration": 0.7, "impact": 0.27, "noise": 17.0},
-	"pistol": {"reach": 18.0, "damage": 55.0, "duration": 0.55, "impact": 0.18, "noise": 105.0},
+	"pistol": {"reach":18.0,"damage":55.0,"duration":.55,"impact":.18,"noise":105.0},
+	"shotgun":{"reach":13.0,"damage":85.0,"duration":.93,"impact":.24,"noise":140.0},
+	"rifle":{"reach":30.0,"damage":65.0,"duration":.64,"impact":.19,"noise":125.0},
+}
+const FIREARMS := {
+	"pistol":{"box":"ammo","capacity":6,"grip":Vector2(.17,.82)},
+	"shotgun":{"box":"shells","capacity":4,"grip":Vector2(.44,.75)},
+	"rifle":{"box":"ammo_556","capacity":8,"grip":Vector2(.39,.81)},
 }
 const EQUIPMENT_ART := {
 	"fist": preload("res://assets/equipamento/fist.png"),
 	"knife": preload("res://assets/equipamento/knife.png"),
 	"bat": preload("res://assets/equipamento/bat.png"),
 	"crowbar": preload("res://assets/equipamento/crowbar.png"),
-	"pistol": preload("res://assets/equipamento/pistol.png"),
-	"ammo": preload("res://assets/equipamento/ammo.png"),
+	"pistol": preload("res://assets/equipamento/pistol_west.png"),
+	"shotgun": preload("res://assets/equipamento/shotgun.png"),
+	"rifle": preload("res://assets/equipamento/rifle.png"),
+	"ammo": preload("res://assets/equipamento/box_9mm.png"),
+	"shells": preload("res://assets/equipamento/box_12.png"),
+	"ammo_556": preload("res://assets/equipamento/box_556.png"),
 }
 # Grip coordinates are in the original weapon images, measured from the upper left.
 const WEAPON_GRIPS := {
 	"bat": Vector2(11.5,7.5), "crowbar": Vector2(1.5,1.5),
 	"knife": Vector2(3.5,2.5), "pistol": Vector2(8.5,5.5), "fist": Vector2(3.5,3.0),
 }
-const WEAPON_LENGTHS := {"bat":1.32,"crowbar":1.32,"knife":.83,"pistol":.87,"fist":.40}
+const WEAPON_LENGTHS := {"bat":1.32,"crowbar":1.32,"knife":.83,"pistol":.87,"shotgun":1.38,"rifle":1.43,"fist":.40}
 const CONSUMABLES := {"food": "fome", "water": "sede", "med": "saude", "bandage": "saude"}
 const SKILLS := {"care":"Primeiros socorros", "workshop":"Oficina", "field":"Sobrevivência"}
 const RECIPES := [
@@ -56,7 +70,7 @@ const RECIPES := [
 	{"out":"med", "skill":"care", "level":2, "inputs":{"bandage":2, "water":1}, "tool":"", "home":true},
 	{"out":"crowbar", "skill":"workshop", "level":2, "inputs":{"parts":3}, "tool":"bat", "home":true},
 ]
-const QUICK_ITEMS := ["fist", "knife", "bat", "crowbar", "pistol", "water", "food", "med", "bandage", "noise_maker"]
+const QUICK_ITEMS := ["fist", "knife", "bat", "crowbar", "pistol", "shotgun", "rifle", "water", "food", "med", "bandage", "noise_maker"]
 const STORY_QUESTS := 16
 const QUESTS := [
 	{"place":"pague_menos_13", "item":"med", "title":"Primeiros socorros", "request":"Busque um kit na Pague Menos da Rua 13 de Maio.", "reward":"water", "story":"Lia tem gente ferida no Posto Barão. Bia passou por lá antes de seguir para a estação."},
@@ -95,6 +109,10 @@ var game
 var needs := {"saude":100.0, "fome":92.0, "sede":89.0, "energia":100.0}
 var bag := {"water":1, "food":1, "bat":1}
 var chest: Dictionary = {}
+var npc_memory: Dictionary = {}
+var loaded_rounds: Dictionary = {}
+var stored_rounds: Dictionary = {}
+var ballistics = BALLISTICS.new()
 var skill_xp := {"care":0, "workshop":0, "field":0}
 var containers: Dictionary = {}
 var taken: Dictionary = {}
@@ -200,6 +218,8 @@ func setup(city_game: Node) -> void:
 	muzzle_flash.shaded = false
 	game.add_child(muzzle_flash)
 	_update_hand(0.0)
+	add_child(ballistics)
+	ballistics.setup(game,self)
 	_refresh_vehicle()
 	_update_near()
 
@@ -253,18 +273,19 @@ func tick(delta: float) -> void:
 		save_timer = 0.0
 		save()
 	if needs["saude"] <= 0.0:
-		down = true
-		sheltered = false
-		_reset_action()
-		hand.hide()
-		sleeve.hide()
-		upper_arm.hide()
-		muzzle_flash.hide()
-		game.menu_open = true
-		_open_panel("queda", "Você caiu")
-		_line("Volte ao abrigo. O equipamento que carregava ficou para trás.")
-		_button("Voltar ao abrigo", _revive)
+		_show_death()
 
+
+func _show_death() -> void:
+	down = true
+	sheltered = false
+	_reset_action()
+	for sprite in [hand,sleeve,upper_arm,muzzle_flash]:
+		sprite.hide()
+	save()
+	_open_panel("queda","Você morreu")
+	_line("Sua mochila, o baú e o progresso desta campanha serão reiniciados.")
+	_button("Criar novo sobrevivente",_revive)
 
 func walking_speed() -> float:
 	var stamina := clampf(float(needs["energia"]) / 30.0, 0.35, 1.0)
@@ -345,13 +366,49 @@ func interact() -> void:
 		return
 	opened = closest_site
 	if opened.get("context") == "survivor":
-		_open_panel("survivor", str(opened["name"]) + " · " + str(opened["job"]))
-		_line(opened["bio"])
-		_line(opened["advice"])
+		var record: Dictionary = survivor_group.memory(opened)
+		record["visits"] = int(record["visits"]) + 1
+		save()
+		_survivor_dialog()
 	elif str(opened["id"]) == "central":
 		_shelter_menu()
 	else:
 		_loot_menu()
+
+
+func _survivor_dialog() -> void:
+	_open_panel("survivor","%s · %s" % [opened["name"],opened["job"]])
+	_line(survivor_group.reaction(opened))
+	_button("Perguntar sobre o sobrevivente",_survivor_topic.bind("bio"))
+	if not str(opened["advice"]).is_empty():
+		_button("Perguntar sobre a região",_survivor_topic.bind("advice"))
+	var water := _button("Oferecer água",_offer_water,"water")
+	water.disabled = not bag.has("water")
+
+
+func _survivor_topic(topic: String) -> void:
+	if menu_kind != "survivor":
+		return
+	_open_panel("survivor",str(opened["name"]))
+	_line(str(opened[topic]))
+	_button("Voltar",_survivor_dialog)
+
+
+func _offer_water() -> void:
+	if menu_kind != "survivor" or not bag.has("water"):
+		return
+	if supply_found and quest < QUESTS.size() and QUESTS[quest]["item"] == "water" and int(bag["water"]) == 1:
+		_notify("Esta água está reservada para a missão.")
+		return
+	_remove_item("water")
+	var record: Dictionary = survivor_group.memory(opened)
+	record["supply"] = mini(3,int(record["supply"])+1)
+	record["trust"] = mini(3,int(record["trust"])+2)
+	record["angry_until"] = 0.0
+	opened["state"] = "patrol"
+	opened["warning_until"] = 0.0
+	save()
+	_survivor_dialog()
 
 
 func inventory() -> void:
@@ -406,8 +463,14 @@ func _inventory_menu(selected := "") -> void:
 				_button("Guardar arma",_equip.bind("fist"),"fist")
 			else:
 				_button("Equipar",_equip.bind(selected),selected)
+			if FIREARMS.has(selected):
+				var config: Dictionary = FIREARMS[selected]
+				_line("Carregada · %d/%d" % [loaded_rounds.get(selected,0),config["capacity"]])
+				_button("Carregar",_reload.bind(selected,config["box"]),config["box"])
 		elif CONSUMABLES.has(selected) or selected in ["fuel","noise_maker"]:
 			_button("Usar",_use.bind(selected),selected)
+		elif selected in ["ammo","shells","ammo_556"]:
+			_button("Combinar com arma equipada",_reload.bind(equipped,selected),selected)
 		elif selected == "manual":
 			_button("Estudar",_study_manual,selected)
 		elif CLOTHES.has(selected):
@@ -557,6 +620,33 @@ func toggle_vehicle() -> void:
 	save()
 
 
+func reload_equipped() -> void:
+	if FIREARMS.has(equipped):
+		_reload(equipped,FIREARMS[equipped]["box"])
+
+
+func _reload(weapon: String, box: String) -> void:
+	if down or action_time > 0.0 or not game.on_foot or not FIREARMS.has(weapon) or not bag.has(weapon):
+		_notify("Equipe ou selecione uma arma de fogo.")
+		return
+	var spec: Dictionary = FIREARMS[weapon]
+	if spec["box"] != box:
+		_notify("Munição incompatível com esta arma.")
+		return
+	if int(loaded_rounds.get(weapon,0)) > 0:
+		_notify("A arma ainda tem munição carregada.")
+		return
+	if not bag.has(box):
+		_notify("Falta %s." % ITEM_NAMES[box])
+		return
+	_remove_item(box)
+	loaded_rounds[weapon] = spec["capacity"]
+	_notify("%s carregada · %d tiros." % [ITEM_NAMES[weapon],spec["capacity"]])
+	save()
+	if menu_kind == "inventory":
+		_inventory_menu(weapon)
+
+
 func attack() -> void:
 	if game.intro_state != 0 or (game.interior.active and not game.interior.posture.is_empty()):
 		return
@@ -566,13 +656,17 @@ func attack() -> void:
 		_notify("Sem energia para atacar.")
 		return
 	var stats: Dictionary = WEAPONS[equipped]
-	if equipped == "pistol" and not bag.has("ammo"):
-		_notify("Pistola sem munição.")
+	if FIREARMS.has(equipped) and int(loaded_rounds.get(equipped,0)) <= 0:
+		_notify("Arma vazia. Carregue uma caixa do calibre certo.")
 		return
+	if ballistics.aiming and FIREARMS.has(equipped):
+		ballistics.orient_actor()
 	_start_action(equipped, stats["duration"])
+	if ballistics.aiming and FIREARMS.has(equipped):
+		action_face = -1.0 if game.walk_face == 0 else 1.0
 	pending_hit = true
-	needs["energia"] = maxf(0.0, float(needs["energia"]) - (2.0 if equipped == "pistol" else 5.0))
-	var nearest := {} if game.interior.active or game.in_home else _attack_target(stats["reach"])
+	needs["energia"] = maxf(0.0, float(needs["energia"]) - (2.0 if FIREARMS.has(equipped) else 5.0))
+	var nearest := {} if game.interior.active or game.in_home or ballistics.aiming else _attack_target(stats["reach"])
 	if not nearest.is_empty():
 		var offset: Vector2 = nearest["pos"] - game.walk_pos
 		var right: Vector3 = game.cam.global_basis.x
@@ -595,38 +689,33 @@ func _attack_target(reach: float) -> Dictionary:
 
 
 func _strike(item: String, stats: Dictionary) -> void:
-	var firearm := item == "pistol"
-	if game.interior.active or game.in_home:
-		if firearm and bag.has("ammo"):
-			_remove_item("ammo")
-			if quest < QUESTS.size() and QUESTS[quest]["item"] == "ammo" and not bag.has("ammo"):
-				supply_found = false
-			save()
-		if game.interior.active:
-			make_noise(_entrance(game.interior.site),stats["noise"])
+	var shot := {}
+	if FIREARMS.has(item):
+		var rounds := int(loaded_rounds.get(item,0))
+		if rounds <= 0:
+			return
+		loaded_rounds[item] = rounds-1
+		shot = ballistics.fire(item)
+		save()
+	if game.in_home:
+		return
+	if game.interior.active:
+		make_noise(_entrance(game.interior.site),stats["noise"])
 		return
 	if game.alpha.live:
-		game.alpha.attack(item)
-		if firearm and bag.has("ammo"):
-			_remove_item("ammo")
-			if quest < QUESTS.size() and QUESTS[quest]["item"] == "ammo" and not bag.has("ammo"):
-				supply_found = false
-			save()
-		return
-	if firearm:
-		if int(bag.get("ammo", 0)) <= 0:
+		game.alpha.attack(item,shot.get("direction",Vector2.ZERO),float(shot.get("range",0)))
+		if shot.is_empty() or shot["target"].is_empty() or not shot["target"].get("hostile",false):
 			return
-		_remove_item("ammo")
+		survivor_group.take_hit(shot["target"],stats["damage"])
+		return
 	make_noise(game.walk_pos, stats["noise"])
-	var nearest := _attack_target(stats["reach"])
+	var nearest: Dictionary = _attack_target(stats["reach"]) if shot.is_empty() else shot["target"]
 	if nearest.is_empty():
-		_notify("Disparo sem acerto." if firearm else "Golpe no ar.")
+		_notify("Disparo sem acerto." if not shot.is_empty() else "Golpe no ar.")
 	elif nearest.get("hostile", false):
 		survivor_group.take_hit(nearest, stats["damage"])
 	else:
 		_damage_zombie(nearest, stats["damage"])
-	if firearm:
-		save()
 
 
 func _start_action(item: String, duration: float) -> void:
@@ -702,7 +791,7 @@ func _update_hand(delta: float, actor: Sprite3D = null, resting := false) -> voi
 	elif acting:
 		var impact: float = WEAPONS[item]["impact"]
 		var progress := clampf(elapsed / impact if elapsed < impact else (action_duration - elapsed) / (action_duration - impact),0,1)
-		if item == "pistol":
+		if FIREARMS.has(item):
 			shot_flash = elapsed >= impact and elapsed - impact < .085
 			var recoil := exp(-maxf(0.0, elapsed - impact) * 22.0) if elapsed >= impact else 0.0
 			pose = Vector2(12 + progress*6 - recoil*4, 15 + progress*4 + recoil*2)
@@ -722,8 +811,8 @@ func _update_hand(delta: float, actor: Sprite3D = null, resting := false) -> voi
 	var unit := actor.pixel_size
 	var model_scale := unit / .072
 	hand.pixel_size = float(WEAPON_LENGTHS.get(item,.40)) * model_scale / maxf(size.x,size.y)
-	var grip_uv: Vector2 = WEAPON_GRIPS.get(item,size*.5)
-	var reversed := item in ["bat","pistol"]
+	var grip_uv: Vector2 = size*FIREARMS[item]["grip"] if FIREARMS.has(item) else WEAPON_GRIPS.get(item,size*.5)
+	var reversed := item == "bat"
 	hand.flip_h = reversed != (face < 0.0)
 	var grip_offset := Vector2(grip_uv.x-size.x*.5,size.y*.5-grip_uv.y) * hand.pixel_size
 	if hand.flip_h:
@@ -735,7 +824,7 @@ func _update_hand(delta: float, actor: Sprite3D = null, resting := false) -> voi
 	var weapon_at := Vector3(grip.x,grip.y,.19) - rotated * Vector3(grip_offset.x,grip_offset.y,0)
 	hand.global_transform = Transform3D(camera * rotated, origin + camera * weapon_at)
 	if shot_flash:
-		var muzzle := Vector3((size.x*.5-.5)*hand.pixel_size*face,2.0*hand.pixel_size,.03)
+		var muzzle := Vector3((size.x*.5-.5)*hand.pixel_size*face,size.y*.25*hand.pixel_size,.03)
 		muzzle_flash.global_transform = hand.global_transform * Transform3D(Basis.IDENTITY,muzzle)
 		muzzle_flash.pixel_size = .11 * model_scale
 		muzzle_flash.show()
@@ -1075,8 +1164,16 @@ func _stash(p: Dictionary) -> Dictionary:
 	var first_equipment := cycle == 1 or bool(containers.get(id, {}).get("arms_pending", false))
 	if first_equipment or (id == "mercado" and random.randf() < 0.30) or (id == "patio_central" and random.randf() < 0.16):
 		_stock_new_equipment(id, stock)
-	if not stock.has("ammo") and type == "mall" and random.randf() < 0.18:
-		stock["ammo"] = 2
+	var gun_chance: float = {"police":.15,"industry":.035,"home":.018,"retail":.025}.get(venue,0.0)
+	if random.randf() < gun_chance:
+		var guns := ["pistol","shotgun","rifle"]
+		var gun: String = guns[random.randi_range(0,guns.size()-1)]
+		stock[gun] = 1
+		if random.randf() < .65:
+			stock[FIREARMS[gun]["box"]] = 1
+	elif random.randf() < gun_chance*2.0:
+		var caliber := ["ammo","shells","ammo_556"]
+		stock[caliber[random.randi_range(0,caliber.size()-1)]] = 1
 	var entry := {"items":stock, "unlocked":unlocked, "delay":delay, "cycle":cycle, "ready_at":(_now() + delay if stock.is_empty() else 0.0)}
 	containers[id] = entry
 	return entry
@@ -1093,9 +1190,6 @@ func _reserve_quest_supply(id: String, stock: Dictionary, waiting: bool) -> void
 func _stock_new_equipment(id: String, stock: Dictionary) -> void:
 	if id == "mercado":
 		stock["knife"] = 1
-	elif id == "patio_central":
-		stock["pistol"] = 1
-		stock["ammo"] = 3
 
 
 func _kind(p: Dictionary) -> String:
@@ -1180,6 +1274,15 @@ func _transfer_item(item: String, deposit: bool, requested: int) -> void:
 			_notify("Baú cheio." if deposit else "Mochila cheia.")
 		return
 	if count == moved:
+		if FIREARMS.has(item):
+			var magazines := loaded_rounds if deposit else stored_rounds
+			var destination := stored_rounds if deposit else loaded_rounds
+			if int(magazines.get(item,0)) > 0:
+				if int(destination.get(item,0)) > 0:
+					_notify("Já há uma arma carregada desse modelo no destino.")
+					return
+				destination[item] = magazines[item]
+			magazines.erase(item)
 		source.erase(item)
 		if deposit and equipped == item:
 			equipped = "fist"
@@ -1682,6 +1785,13 @@ func _set_parked_pose(info: Dictionary) -> void:
 
 
 func _refresh_vehicle() -> void:
+	for car in game.parked_vehicles:
+		if not car.has("initial_pos"):
+			car["initial_pos"] = car["pos"]
+		var index: int = car["index"]
+		var absent := index % 5 >= 3 and index != active_vehicle and not taken.has(str(index))
+		car["absent"] = absent
+		car["node"].visible = not absent
 	for id in taken:
 		var i := int(id)
 		if i < 0 or i >= game.parked_vehicles.size():
@@ -2010,21 +2120,43 @@ func _revive() -> void:
 	equipped = "bat"
 	outfit = ""
 	dirty_hands = false
-	_apply_outfit()
-	bag = {"food":1,"water":1,"bat":1}
-	needs = {"saude":100.0,"fome":68.0,"sede":68.0,"energia":72.0}
-	for z in infected:
-		_clear_hit_feedback(z)
-		z["node"].queue_free()
-	infected.clear()
+	bag = {"water":1,"food":1,"bat":1}
+	chest.clear()
+	npc_memory.clear()
+	loaded_rounds.clear()
+	stored_rounds.clear()
+	containers.clear()
+	for car in game.parked_vehicles:
+		if car.has("initial_pos"):
+			car["pos"] = car["initial_pos"]
+			car["heading"] = car["original_heading"]
+			car.erase("fuel")
+			car.erase("serviced")
+			_set_parked_pose(car)
+	taken.clear()
+	active_vehicle = -1
+	fuel = 0.0
+	_refresh_vehicle()
+	quest = 0
+	supply_found = false
+	reputation = 0
+	next_contract = 0.0
+	skill_xp = {"care":0,"workshop":0,"field":0}
+	needs = {"saude":100.0,"fome":92.0,"sede":89.0,"energia":100.0}
+	_clear_infected()
 	noises.clear()
-	supply_found = supply_found and quest < QUESTS.size() and chest.has(QUESTS[quest]["item"])
+	game.route_target = ""
 	game.on_foot = true
 	game.walk_pos = safe
-	game.walker.position = Vector3(safe.x,0.04,safe.y)
-	game.walker.show()
+	game.walker.position = Vector3(safe.x,.04,safe.y)
 	down = false
 	close()
+	game.home.reset_all()
+	game.home.seed_survival_room()
+	game.home._rebuild_furniture()
+	game.home._save()
+	_apply_outfit()
+	game._intro_begin()
 	save()
 
 
@@ -2086,7 +2218,7 @@ func save() -> void:
 	var player: Vector2 = game._actor_pos()
 	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"on_foot":game.on_foot,"in_home":game.in_home and game.intro_state == 0,"areas":containers,"bag":bag,"skills":skill_xp,"equipped":equipped,"outfit":outfit,"dirty_hands":dirty_hands,"chest":chest,"needs":needs,"taken":taken,"parked_heading_v2":true,"vehicle":active_vehicle,
+		f.store_string(JSON.stringify({"on_foot":game.on_foot,"in_home":game.in_home and game.intro_state == 0,"areas":containers,"bag":bag,"skills":skill_xp,"equipped":equipped,"outfit":outfit,"dirty_hands":dirty_hands,"chest":chest,"npc_memory":npc_memory,"loaded_rounds":loaded_rounds,"stored_rounds":stored_rounds,"needs":needs,"taken":taken,"parked_heading_v2":true,"vehicle":active_vehicle,
 			"fuel":fuel,"quest":quest,"found":supply_found,"reputation":reputation,"next":next_contract,"x":player.x,"y":player.y,
 			"cx":game.car_pos.x,"cy":game.car_pos.y,"heading":game.car_heading}))
 
@@ -2121,6 +2253,9 @@ func _load_progress() -> void:
 	dirty_hands = bool(data.get("dirty_hands", false))
 	_apply_outfit()
 	chest = data.get("chest", {})
+	npc_memory = data.get("npc_memory",{})
+	loaded_rounds = data.get("loaded_rounds",{})
+	stored_rounds = data.get("stored_rounds",{})
 	needs.merge(data.get("needs", {}), true)
 	taken = data.get("taken", {})
 	if not data.get("parked_heading_v2", false):
@@ -2139,7 +2274,7 @@ func _load_progress() -> void:
 	game.car_heading = float(data.get("heading",0))
 	game.on_foot = bool(data.get("on_foot",true)) or active_vehicle < 0
 	if float(needs["saude"]) <= 0.0:
-		_revive()
+		down = true
 
 
 func _upgrade_loot_delays() -> void:

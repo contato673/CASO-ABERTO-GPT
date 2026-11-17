@@ -12,7 +12,9 @@ Em um jogo novo, crie seu sobrevivente e leia o bilhete de Bia. Esta atualizaç�
 | Enter ou botão Entrar | Entrar em uma edificação próxima |
 | E ou botão de interação | Interagir com móveis, falar ou investigar |
 | F ou botão do veículo | Inspecionar, roubar, entrar ou descer do carro parado |
-| Espaço ou mira na tela | Atacar com o equipamento disponível |
+| Espaço ou botão de ataque | Golpear ou disparar |
+| T, botão direito ou Mirar | Exibir a trajetória da arma de fogo. Toque no cenário para ajustar a direção |
+| R ou Carregar na mochila | Usar uma caixa do calibre da arma |
 | I ou ícone da mochila | Abrir a grade e tocar num item para usá-lo, equipá-lo ou vesti-lo |
 | Esc ou Fechar | Fechar a janela |
 
@@ -39,7 +41,11 @@ Dados cartográficos © [OpenStreetMap contributors](https://www.openstreetmap.o
 
 ## Alpha cooperativo
 
-A versão do GitHub Pages inicia a campanha individual. O serviço do alpha abre o jogo em **/alpha/** e exige conta. Só há dez convites de uso único. Um WebSocket autenticado compartilha posição, infectados, dano e distrações sonoras entre os jogadores. Senhas com salt e hash scrypt e sessões com expiração ficam no PostgreSQL privado da infraestrutura. Inventário, casa e campanha são locais, separados por conta e por publicação. O saque e os veículos ainda têm estado individual neste alpha.
+A versão do GitHub Pages inicia a campanha individual. O serviço do alpha abre o jogo em **/alpha/** e exige conta. Só há dez convites de uso único. Um WebSocket autenticado compartilha posição, infectados, dano e distrações sonoras entre os jogadores. Senhas com salt e hash scrypt e sessões com expiração ficam no PostgreSQL privado da infraestrutura. Inventário, casa e campanha são locais, separados por conta e por publicação. O saque, munição, memória dos NPCs e veículos têm estado individual neste alpha.
+
+Entre no servidor [Big Field](https://campo-grande-quarentena-alpha-uza6.onrender.com/alpha/) com um convite de uso único. Os losangos azuis no minimapa indicam outros jogadores na rua.
+
+A pistola usa 9 mm, a escopeta usa calibre 12 e o fuzil usa 5,56 mm. As armas de fogo e as caixas aparecem separadamente no saque. Perto do baú físico, use **Abrir baú**. Morrer reinicia mochila, baú e campanha e volta à criação do sobrevivente.
 
 No celular, o botão pontilhado abre a roda de itens. No teclado, use **Q**. As habilidades têm XP por prática e por estudo, com vantagem inicial da profissão. A fabricação mostra materiais, ferramenta, bancada e nível exigidos em cada receita. A bancada fica na casa.
 

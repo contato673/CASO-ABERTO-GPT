@@ -23,7 +23,9 @@ INVITES = set(os.environ.get("ALPHA_INVITE_HASHES", "").split(","))
 PLAYER_LIMIT = 10
 SPAWN = (-3574.0, 1265.0)
 WEAPONS = {"fist": (1.8, 14, .45), "knife": (2.25, 24, .43), "bat": (3.05, 30, .64),
-           "crowbar": (3.05, 38, .7), "pistol": (18, 55, .55)}
+           "crowbar": (3.05, 38, .7), "pistol": (18, 55, .55),
+           "shotgun": (13, 85, .93), "rifle": (30, 65, .64)}
+FIREARMS = {"pistol", "shotgun", "rifle"}
 peers = {}
 infected = {}
 sounds = []
@@ -277,16 +279,33 @@ def attack(peer, message, now):
     if now < peer["strike"]:
         return
     peer["strike"] = now + delay
-    if weapon == "pistol" and len(sounds) < 80:
+    firearm = weapon in FIREARMS
+    if firearm and len(sounds) < 80:
         sounds.append((peer["x"], peer["y"], 75, now + 6))
-    candidates = [(math.hypot(z["x"] - peer["x"], z["y"] - peer["y"]), z)
-                  for z in infected.values() if z["hp"] > 0]
-    if candidates:
-        distance, zombie = min(candidates, key=lambda item: item[0])
+    direction = (coordinate(message, "aim_x"), coordinate(message, "aim_y"))
+    aimed = firearm and all(value is not None for value in direction) and .95 < math.hypot(*direction) < 1.05
+    maximum = coordinate(message, "range") if aimed else None
+    if maximum is not None:
+        reach = min(reach, max(0, maximum + .45))
+    candidates = []
+    for zombie in infected.values():
+        if zombie["hp"] <= 0:
+            continue
+        dx = zombie["x"] - peer["x"]
+        dy = zombie["y"] - peer["y"]
+        distance = math.hypot(dx, dy)
+        if aimed:
+            ax, ay = direction
+            distance = dx * ax + dy * ay
+            if distance <= 0 or abs(dx * ay - dy * ax) > .96:
+                continue
         if distance <= reach:
-            zombie["hp"] = max(0, zombie["hp"] - damage)
-            zombie["hit"] += 1
-            zombie["dead"] = now + 10
+            candidates.append((distance, zombie))
+    if candidates:
+        _, zombie = min(candidates, key=lambda item: item[0])
+        zombie["hp"] = max(0, zombie["hp"] - damage)
+        zombie["hit"] += 1
+        zombie["dead"] = now + 10
 
 
 def sound(peer, message, now):

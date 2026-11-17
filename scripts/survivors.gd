@@ -67,7 +67,7 @@ func setup(survival: Node, city: Node) -> void:
 			"goal": objective, "pos": home, "node": sprite, "title": title,
 			"state": "patrol", "target": objective, "walk": 0.0, "face": 1,
 			"phase": i % 3, "swap_at": 4.0 + i, "calm": 0.0, "route": PackedVector2Array(),
-			"last_alarm": -20.0, "context": "survivor", "hostile": HOSTILE_SITES.has(profile[0]),
+			"last_alarm": -20.0, "rest_until":0.0,"warning_until":0.0, "context": "survivor", "hostile": HOSTILE_SITES.has(profile[0]),
 			"slot": (i * 5 + 2) % 7, "active": false, "hp": 55.0, "strike_at": 0.0, "defeated_until": 0.0})
 
 
@@ -82,13 +82,34 @@ func _pick_point(origin: Vector2, along: Vector2, side: Vector2, distance: float
 func near(point: Vector2, limit: float) -> Dictionary:
 	var found := {}
 	for person in people:
-		if not person["active"] or person["hostile"] or person["state"] != "patrol":
+		if not person["active"] or person["state"] not in ["patrol","search","warn"]:
 			continue
 		var d: float = point.distance_to(person["pos"])
 		if d < limit and life._clear_line(point, person["pos"]):
 			found = person
 			limit = d
 	return found
+
+
+func memory(person: Dictionary) -> Dictionary:
+	var id: String = person["id"]
+	if not life.npc_memory.has(id):
+		life.npc_memory[id] = {"visits":0,"trust":0,"supply":absi(id.hash())%3,
+			"angry_until":0.0,"danger_until":0.0,"danger_x":0.0,"danger_y":0.0,"search_at":0.0}
+	return life.npc_memory[id]
+
+
+func reaction(person: Dictionary) -> String:
+	var record := memory(person)
+	if float(record["angry_until"]) > life._now():
+		return "Eu lembro do que você fez. Fique longe."
+	if int(record["trust"]) > 0:
+		return "Eu lembro da sua ajuda. Pode baixar a guarda."
+	if person["hostile"]:
+		return "Não chegue mais perto. Preciso de suprimentos e estou defendendo esta rota."
+	if int(record["visits"]) > 1:
+		return "Já nos cruzamos por aqui. Ainda estou procurando um caminho seguro."
+	return "Estou tentando sobreviver. O que você precisa?"
 
 
 func _encounter_window(person: Dictionary, now: float) -> bool:
@@ -131,21 +152,36 @@ func tick(here: Vector2, delta: float) -> void:
 
 
 func _hostility(person: Dictionary, player: Vector2, now: float) -> void:
-	if life.sheltered or life.down or not game.on_foot or player.distance_to(life.safe) < 8.0:
+	var record := memory(person)
+	var trusted := int(record["trust"]) >= 2 and float(record["angry_until"]) <= now
+	if life.sheltered or life.down or not game.on_foot or player.distance_to(life.safe) < 8.0 or trusted:
+		if person["state"] == "warn":
+			person["state"] = "patrol"
+		person["warning_until"] = 0.0
 		if person["state"] == "attack":
 			person["state"] = "patrol"
 			person["target"] = person["home"]
 		return
-	if person["state"] == "flee" or person["state"] == "hide":
+	if person["state"] in ["flee","hide","recover"]:
+		return
+	if life.menu_kind == "survivor" and life.opened.get("id") == person["id"]:
 		return
 	var at: Vector2 = person["pos"]
 	var distance: float = at.distance_to(player)
 	if distance > (16.0 if person["state"] == "attack" else 9.0) or not life._clear_line(at, player):
-		if person["state"] == "attack":
+		if person["state"] in ["attack","warn"]:
 			person["state"] = "patrol"
 			person["target"] = person["home"]
 		return
 	if person["state"] != "attack":
+		if person["state"] != "warn":
+			person["state"] = "warn"
+			person["warning_until"] = now + (1.0 if float(record["angry_until"]) > now else 5.0)
+			person["target"] = at
+			person["route"] = PackedVector2Array()
+			life._notify("Um sobrevivente mandou você parar.")
+		if now < float(person["warning_until"]):
+			return
 		person["strike_at"] = now + 1.1
 		life._notify("Sobrevivente hostil por perto.")
 	person["state"] = "attack"
@@ -171,6 +207,9 @@ func combat_target(point: Vector2, reach: float) -> Dictionary:
 
 
 func take_hit(person: Dictionary, amount: float) -> void:
+	var record := memory(person)
+	record["trust"] = -3
+	record["angry_until"] = life._now() + 1800.0
 	person["hp"] = float(person["hp"]) - amount
 	person["strike_at"] = life._now() + 0.8
 	if person["hp"] <= 0.0:
@@ -193,6 +232,10 @@ func _decide(person: Dictionary) -> void:
 			limit = d
 	var now := life._now() as float
 	if not threat.is_empty():
+		var record := memory(person)
+		record["danger_until"] = now + 135.0
+		record["danger_x"] = threat["pos"].x
+		record["danger_y"] = threat["pos"].y
 		var away: Vector2 = (threat["pos"] as Vector2).direction_to(at)
 		if person["state"] != "flee" or at.distance_to(person["target"]) < 4.0:
 			person["state"] = "flee"
@@ -207,8 +250,36 @@ func _decide(person: Dictionary) -> void:
 		if at.distance_to(person["target"]) < 2.0:
 			person["state"] = "hide"
 		return
-	if person["state"] == "attack":
+	if person["state"] in ["attack","warn"]:
 		return
+	var record := memory(person)
+	if float(person["hp"]) < 19.0:
+		person["state"] = "recover"
+		person["target"] = person["home"]
+		if at.distance_to(person["home"]) < 2.0:
+			if float(person["rest_until"]) == 0.0:
+				person["rest_until"] = now + 18.0
+			elif now >= float(person["rest_until"]):
+				person["hp"] = 38.0
+				person["rest_until"] = 0.0
+		return
+	if int(record["supply"]) <= 0 and now >= float(record["search_at"]):
+		var goal: Vector2 = person["goal"]
+		var danger := Vector2(float(record["danger_x"]),float(record["danger_y"]))
+		if now < float(record["danger_until"]) and goal.distance_to(danger) < 12.0:
+			person["state"] = "hide"
+			person["target"] = at
+			return
+		person["state"] = "search"
+		person["target"] = goal
+		if at.distance_to(goal) < 2.0:
+			record["supply"] = 1
+			record["search_at"] = now + 180.0
+			person["state"] = "patrol"
+		return
+	if now > float(record["search_at"]) and int(record["supply"]) > 0:
+		record["search_at"] = now + 240.0
+		record["supply"] = int(record["supply"]) - 1
 	if person["state"] != "patrol":
 		person["state"] = "patrol"
 		person["target"] = person["home"]

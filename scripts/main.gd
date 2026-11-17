@@ -95,6 +95,8 @@ var parked_vehicles: Array[Dictionary] = []
 var parked_cells: Dictionary = {}
 var obstacle_cells: Dictionary = {}
 var btn_attack: Button
+var btn_aim: Button
+var btn_chest: Button
 var walk_pos := Vector2.ZERO
 var walker: Sprite3D
 var walker_outline: Sprite3D
@@ -383,7 +385,9 @@ func _start_session(account: String) -> void:
 	_update_camera(1.0)
 	_start_music()
 	_layout_ui()
-	if not home.cfg.get("survival_created", false):
+	if survival.down:
+		survival._show_death()
+	elif not home.cfg.get("survival_created", false):
 		_intro_begin()
 	elif survival.resume_at_home:
 		_enter_home()
@@ -410,6 +414,7 @@ func _process(delta: float) -> void:
 		interior.tick(delta, joy_vec)
 		survival._equipment_on_top(true)
 		survival._update_hand(delta,interior.actor,not interior.posture.is_empty())
+		survival.ballistics.update(delta)
 		return
 	if in_home:
 		if intro_state == 0 and not menu_open and survival.action_time <= 0.0:
@@ -418,6 +423,7 @@ func _process(delta: float) -> void:
 		_update_camera(delta)
 		survival._equipment_on_top(true)
 		survival._update_hand(delta,interior.home_pawn,intro_state != 0)
+		survival.ballistics.update(delta)
 		return
 	if not menu_open:
 		if on_foot:
@@ -428,6 +434,7 @@ func _process(delta: float) -> void:
 	survival.tick(delta)
 	_update_camera(delta)
 	survival.update_hit_feedback(delta)
+	survival.ballistics.update(delta)
 	_update_goal_arrow()
 	if street_last_pos.distance_squared_to(_actor_pos()) > 6.25:
 		street_last_pos = _actor_pos()
@@ -468,6 +475,23 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not session_ready or (not alpha.endpoint.is_empty() and not alpha.live):
 		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		survival.ballistics.toggle()
+		survival.ballistics.aim_at(event.position)
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_R:
+			survival.reload_equipped()
+			return
+		if event.keycode == KEY_T:
+			survival.ballistics.toggle()
+			return
+	if event is InputEventMouseMotion and survival.ballistics.aiming:
+		survival.ballistics.aim_at(event.position)
+	if event is InputEventScreenTouch and event.pressed and survival.ballistics.aim_at(event.position):
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and survival.ballistics.aim_at(event.position):
+		return
 	if interior.active:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			interior.tap(event.position)
@@ -488,7 +512,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if in_home:
 		if intro_state == 0 and event is InputEventKey and event.pressed and not event.echo:
 			match event.keycode:
-				KEY_E, KEY_I, KEY_C: survival._personal_home_menu()
+				KEY_E:
+					if home.near_chest():
+						survival._chest_menu(true)
+					else:
+						survival._personal_home_menu()
+				KEY_I, KEY_C: survival._personal_home_menu()
 				KEY_SPACE: survival.attack()
 				KEY_ESCAPE:
 					if menu_open:
@@ -2330,6 +2359,18 @@ func _build_touch_ui() -> void:
 	layer.add_child(btn_car)
 	btn_attack = _icon_btn("attack", survival.attack)
 	layer.add_child(btn_attack)
+	btn_aim = Button.new()
+	btn_aim.focus_mode = Control.FOCUS_NONE
+	btn_aim.custom_minimum_size = Vector2(100,46)
+	btn_aim.pressed.connect(survival.ballistics.toggle)
+	layer.add_child(btn_aim)
+	btn_chest = Button.new()
+	btn_chest.text = "Abrir baú"
+	btn_chest.custom_minimum_size = Vector2(128,46)
+	btn_chest.focus_mode = Control.FOCUS_NONE
+	btn_chest.pressed.connect(survival._chest_menu.bind(true))
+	btn_chest.hide()
+	layer.add_child(btn_chest)
 
 
 func _icon_btn(kind: String, cb: Callable) -> Button:
@@ -2412,6 +2453,9 @@ func _label_bg(l: Label, pad_x: float, pad_y: float) -> void:
 
 
 func _touch_vis() -> void:
+	btn_chest.visible = in_home and intro_state == 0 and not menu_open and home.near_chest()
+	btn_aim.visible = ph and survival.ballistics.enabled()
+	btn_aim.text = "Mirando" if survival.ballistics.aiming else "Mirar"
 	if interior.active:
 		btn_enter.hide()
 		btn_car.hide()
@@ -2516,6 +2560,8 @@ func _layout_ui() -> void:
 	btn_book.position = Vector2(vs.x - 88.0 - 16.0, vs.y - 88.0 - 40.0)
 	btn_car.position = Vector2(14.0, vs.y - 125.0 if ph else vs.y - 62.0)
 	btn_attack.position = Vector2(14.0, vs.y - 230.0)
+	btn_aim.position = Vector2(14.0,vs.y-368.0)
+	btn_chest.position = Vector2(vs.x-142.0,vs.y-142.0)
 	btn_wheel.custom_minimum_size = Vector2(70, 70)
 	btn_wheel.size = Vector2(70, 70)
 	btn_wheel.position = Vector2(23.0, vs.y - 315.0)
@@ -3507,7 +3553,9 @@ func _nearby_cars(at: Vector2, radius: float) -> Array:
 	var found := []
 	for x in range(floori(low.x), floori(high.x) + 1):
 		for y in range(floori(low.y), floori(high.y) + 1):
-			found.append_array(parked_cells.get(Vector2i(x, y), []))
+			for index in parked_cells.get(Vector2i(x,y),[]):
+				if not parked_vehicles[index].get("absent",false):
+					found.append(index)
 	return found
 
 

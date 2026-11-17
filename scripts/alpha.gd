@@ -174,9 +174,9 @@ func tick(delta: float) -> void:
 	_animate_people(delta)
 
 
-func attack(weapon: String) -> void:
+func attack(weapon: String, direction := Vector2.ZERO, reach := 0.0) -> void:
 	if live:
-		socket.send_text(JSON.stringify({"kind":"attack", "weapon":weapon}))
+		socket.send_text(JSON.stringify({"kind":"attack","weapon":weapon,"aim_x":direction.x,"aim_y":direction.y,"range":reach}))
 
 
 func noise(at: Vector2) -> void:

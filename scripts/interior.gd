@@ -12,19 +12,22 @@ const ROOM_NAMES := {"home":"Residência", "retail":"Comércio", "pharmacy":"Far
 	"hotel":"Hotel", "civic":"Edifício público"}
 # Model, room position, visual height, item groups and optional interaction.
 const FURNITURE := {
-	"home":[["sofa",2.35,.91,1.0,"cloth","seat"],["coffee",2.3,4.0,.76,"manual"],
-		["tv",3.65,4.62,.80,"parts"],["plant",.9,3.6,1.1,""],["vacuum",4.5,4.9,1.02,""],
-		["fridge",9.92,.91,1.86,"water"],["cupboard",7.78,.78,1.80,"food"],
-		["kitchen_sink",6.08,.91,1.0,"","wash"],["stove",8.79,.89,.94,""],
-		["table",8.7,4.5,1.04,"food"],["chair",9.8,4.3,.84,"","seat"],
-		["bed",1.65,8.45,1.0,"cloth","bed"],["wardrobe",3.1,6.98,1.87,"clothes"],
-		["nightstand",.64,7.62,.56,"manual"],["sink",7.39,6.98,.97,"","wash"],
-		["medicine",8.61,6.98,1.58,"med"],["bath",10.46,8.2,.67,""],
-		["washer",9.8,6.96,.89,"cloth"],["basket",7.9,9.3,.58,"cloth"],["trash",10.6,6.2,.65,""]],
-	"retail":[["fridge",1.4,1.6,1.7,"water"],["shelf",3.5,1.6,1.42,"food"],
-		["shelf",6.1,1.6,1.42,"food"],["shelf",8.9,1.6,1.42,"tools"],["desk",1.5,4.7,1.12,"manual","survey"],
-		["fridge",10.3,3.9,1.65,"water"],["shelf",4.0,5.1,1.36,"clothes"],["parcel",7.8,5.1,.62,"parts"],
-		["sink",1.4,8.0,1.18,"","wash"],["medicine",3.1,8.1,1.48,"med"],["crate",9.5,8.0,1.04,"tools"],["trash",10.6,6.5,.8,""]],
+	"home":[["sofa",2.25,.85,1.0,"cloth","seat"],["coffee",2.25,2.55,.59,"manual"],
+		["tv",2.25,4.05,.85,"parts"],["plant",.70,1.65,.94,""],
+		["fridge",8.18,.82,1.83,"water"],["cupboard",7.04,.82,1.70,"food"],
+		["kitchen_sink",5.94,.82,.96,"","wash"],["stove",9.26,.82,.94,""],
+		["table",7.3,4.35,.88,"food"],["chair",8.65,4.5,.79,"","seat"],["chair",6.05,4.35,.79,"","seat"],
+		["bed",1.58,8.36,1.0,"cloth","bed"],["wardrobe",3.33,7.06,1.8,"clothes"],
+		["nightstand",.70,7.26,.57,"manual"],["sink",7.35,7.04,.96,"","wash"],
+		["medicine",8.56,7.03,1.46,"med"],["washer",10.02,7.03,.90,"cloth"],
+		["bath",10.28,9.02,.64,""],["basket",8.8,9.14,.45,"cloth"]],
+	"retail":[["shelf",1.22,.84,1.58,"food"],["shelf",2.95,.84,1.58,"food"],
+		["shelf",4.67,.84,1.58,"food"],["shelf",6.36,.84,1.58,"tools"],
+		["shelf",2.25,3.12,1.30,"food"],["shelf",3.88,3.12,1.30,"clothes"],
+		["shelf",5.52,3.12,1.30,"food"],["fridge",10.34,3.1,1.74,"water"],
+		["reception",8.38,5.08,1.14,"manual","survey"],["parcel",9.9,5.06,.64,"parts"],
+		["sink",1.25,7.05,.96,"","wash"],["medicine",2.62,7.04,1.46,"med"],
+		["crate",9.25,8.05,.88,"tools"],["crate",10.39,8.05,.88,"tools"],["trash",9.89,9.33,.66,""]],
 	"pharmacy":[["medicine",1.5,1.4,1.7,"med"],["medicine",3.6,1.4,1.7,"med"],["medicine",7.4,1.4,1.6,"med"],
 		["fridge",9.8,1.5,1.68,"water"],["desk",2.1,4.0,1.12,"manual","survey"],["shelf",5.3,4.2,1.34,"med"],
 		["shelf",8.4,4.6,1.42,"med"],["sink",1.5,8.1,1.23,"","wash"],
@@ -33,10 +36,12 @@ const FURNITURE := {
 		["student",1.8,3.3,.95,""],["student",3.8,3.3,.95,""],["student",1.8,5.1,.95,""],["student",3.8,5.1,.95,""],
 		["cubbies",8.6,1.8,1.58,"manual"],["table",8.3,4.4,1.28,"food"],
 		["fridge",10.5,3.3,1.62,"water"],["medicine",2.5,8.4,1.6,"med"],["sink",7.9,8.2,1.16,"","wash"]],
-	"industry":[["crate",1.4,1.6,1.16,"tools"],["crate",3.5,1.5,1.22,"parts"],
-		["drum",7.93,.83,1.12,"fuel"],["drum",9.47,.83,1.18,"fuel"],["generator",1.04,4.33,1.25,"parts"],
-		["desk",4.0,5.66,1.0,"manual","survey"],["crate",8.69,4.83,1.10,"tools"],["rubble",10.16,6.1,.31,""],
-		["medicine",5.38,7.04,1.56,"med"],["sink",6.55,7.04,.96,"","wash"],["barricade",10.08,8.53,1.02,""]],
+	"industry":[["crate",1.25,.88,.94,"tools"],["crate",2.4,.88,.94,"parts"],
+		["drum",7.55,.81,1.12,"fuel"],["drum",8.76,.81,1.12,"fuel"],["drum",9.95,.81,1.12,"fuel"],
+		["shelf",1.23,3.01,1.8,"tools"],["shelf",2.87,3.01,1.8,"parts"],["generator",9.44,3.65,1.1,"parts"],
+		["desk",1.20,5.58,1.02,"manual","survey"],["office_chair",2.54,5.57,.81,"","seat"],
+		["medicine",5.13,7.27,1.46,"med"],["sink",6.38,7.27,.95,"","wash"],
+		["barricade",10.02,8.75,.94,""],["rubble",9.45,6.10,.23,""]],
 	"police":[["reception",2.0,1.7,1.3,"manual","survey"],["office_chair",4.1,1.5,.97,"","seat"],
 		["evidence",9.1,1.8,1.8,"tools"],["crate",10.2,3.4,1.04,"tools"],["interrogation",2.4,4.7,1.25,"manual"],
 		["radio",3.7,4.1,.55,"parts"],["barricade",8.5,5.0,1.01,""],
@@ -69,7 +74,7 @@ const FALLBACK := {"student":"table", "teacher":"desk", "chalk":"tv","cubbies":"
 	"reception":"desk","interrogation":"table","generator":"washer","drum":"basket","crate":"parcel",
 	"rubble":"trash","medical_case":"medicine","barricade":"coffee"}
 const ITEM_ZONE := {"water":"water","dirty_water":"water","food":"food","med":"med","bandage":"med",
-	"cloth":"cloth","parts":"parts","manual":"manual","ammo":"tools","pistol":"tools","knife":"tools",
+	"cloth":"cloth","parts":"parts","manual":"manual","ammo":"tools","shells":"tools","ammo_556":"tools","pistol":"tools","shotgun":"tools","rifle":"tools","knife":"tools",
 	"bat":"tools","crowbar":"tools","fuel":"fuel","wood":"parts","jacket":"clothes","coat":"clothes","shirt":"clothes"}
 
 var game
@@ -362,14 +367,15 @@ func _build_floor() -> void:
 		else:
 			_edge(a,b,wall,2.78 if back else .22)
 	var upper := _upper_floor()
-	for partition in upper.get("walls",PARTITIONS[kind]):
+	for partition in upper.get("walls",_ground_partitions()):
 		var far: float = span.x if float(partition[2]) == 11.6 else partition[2]
 		_wall(partition[0],partition[1],far,partition[3],wall,.86)
-	var rug := Color("#795048") if kind == "home" else Color("#47595e")
 	var patches := SurfaceTool.new()
 	patches.begin(Mesh.PRIMITIVE_TRIANGLES)
-	_floor_strip(patches,Rect2(_mapped(Vector2(2.65,3.7))-Vector2(1.92,1.95),Vector2(3.85,3.9)),.012,rug)
-	_floor_strip(patches,Rect2(_mapped(Vector2(8.35,8.1))-Vector2(2.0,1.32),Vector2(4.0,2.65)),.012,floor_color.lightened(.19))
+	for zone in _floor_zones():
+		var center := _mapped(zone[0])
+		var size: Vector2 = zone[1]
+		_floor_strip(patches,Rect2(center-size*.5,size),.012,zone[2])
 	var carpet := MeshInstance3D.new()
 	carpet.mesh = patches.commit()
 	carpet.material_override = game._mat(Color.WHITE,true)
@@ -459,6 +465,31 @@ func _upper_floor() -> Dictionary:
 		"furniture":[["desk",2.25,1.55,1.1,"parts"],["office_chair",3.65,2.55,.96,"","seat"],
 			["shelf",7.7,1.45,1.5,"manual"],["desk",9.65,2.75,1.1,"tools"],
 			["sofa",2.35,7.2,1.02,"cloth","seat"],["coffee",2.45,8.8,.68,"manual"]]}
+
+
+func _ground_partitions() -> Array:
+	if kind != "home":
+		return PARTITIONS[kind]
+	var variant := layout_id%3
+	if variant == 1:
+		return [[5.55,0,5.55,3.0],[5.55,4.65,5.55,5.9],[0,5.95,3.65,5.95],[7.15,6.15,11.6,6.15]]
+	if variant == 2:
+		return [[5.55,0,5.55,3.8],[0,6.03,3.65,6.03],[7.2,6.08,11.6,6.08]]
+	return PARTITIONS["home"]
+
+
+func _floor_zones() -> Array:
+	if kind == "home":
+		var lounge := Vector2(2.55,8.05) if layout_id%3 == 1 else Vector2(2.55,2.69)
+		var kitchen := Vector2(2.55,8.55) if layout_id%3 == 2 else Vector2(8.48,2.63)
+		return [[lounge,Vector2(3.5,3.16),Color("#705348")],
+			[kitchen,Vector2(4.6,4.55),Color("#b8aa91")],
+			[Vector2(8.52,8.0),Vector2(4.35,2.90),Color("#a6aaa0")]]
+	if kind in ["retail","pharmacy","industry"]:
+		return [[Vector2(4.50,2.77),Vector2(7.9,4.8),Color("#748487")],
+			[Vector2(8.86,8.08),Vector2(4.5,3.08),Color("#465b60")]]
+	return [[Vector2(2.65,3.7),Vector2(3.85,3.9),Color("#47595e")],
+		[Vector2(8.35,8.1),Vector2(4,2.65),Color("#7e8681")]]
 
 
 func _furniture_plan() -> Array:
@@ -568,7 +599,7 @@ func _prop(row: Array) -> void:
 		var width := clampf(float(texture.get_width()) * height / texture.get_height() * .75,.43,2.0)
 		var depth: float = {"table":.86,"coffee":.70,"desk":.77,"reception":.86,"teacher":.78,
 			"fridge":.72,"cupboard":.61,"wardrobe":.63,"bath":.91,"generator":.69}.get(model,.52 if height < 1.1 else .65)
-		footprint = Vector2(width,depth)
+		footprint = Vector2(maxf(width,1.15),.54) if model == "tv" else Vector2(width,depth)
 	var at := _fixture_position(_mapped(Vector2(row[1],row[2])),footprint)
 	if not at.is_finite():
 		return
@@ -591,11 +622,16 @@ func _prop(row: Array) -> void:
 	else:
 		var contact := at + Vector2.ONE * (minf(footprint.x,footprint.y) * .27)
 		var sprite := _sprite(texture,contact,height)
-		sprite.position.y = .016
+		if model == "tv":
+			_box(_v(at,.19),Vector3(footprint.x,.38,footprint.y),Color("#594635"))
+			_box(_v(at,.397),Vector3(footprint.x+.055,.045,footprint.y+.04),Color("#876347"))
+			sprite.position.y = .421
+			height += .4
+		else:
+			sprite.position.y = .016
 	var bounds := Rect2(at-footprint*.5,footprint)
 	furniture_bounds.append(bounds)
-	if model != "rubble":
-		obstacles.append(bounds)
+	obstacles.append(bounds)
 	if not str(row[4]).is_empty():
 		sockets.append({"pos":at,"zone":row[4],"height":height})
 	if row.size() > 5:
